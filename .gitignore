@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/
+.env
+
+# Authorization files contain live tokens — never commit.
+authorizations.json
+*.authorizations.json
