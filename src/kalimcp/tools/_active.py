@@ -1,7 +1,21 @@
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Aaron K. Clark
-"""Shared decorator/helper for active-scan tools (auth-required)."""
+"""Shared decorator for active-scan tools.
+
+Provides ``active_tool`` — wraps a coroutine that hits a target
+over the network (nmap, nikto, gobuster, sslscan). The decorator:
+
+  1. Checks the **refuse list** (``authz.is_refused``) and bails
+     with a structured error before any subprocess starts if the
+     target is on it. Override with ``KALIMCP_ALLOW_REFUSED=1`` in
+     the environment.
+  2. Times the call and appends a single audit-log line on
+     completion (or ``tool_exception`` on failure).
+
+Authorization tokens were removed in cc66cf8; the refuse list
+remained as a code-level safety guardrail and was re-wired here
+when its documented behavior turned out to no longer match reality.
+"""
 
 from __future__ import annotations
 
@@ -10,14 +24,31 @@ from typing import Any, Awaitable, Callable
 
 from .. import audit, authz
 
+
 def active_tool(tool_name: str):
-    """Decorator: audit-log the call without authorization.
-    
-    The decorated coroutine must accept `target` as a keyword argument.
+    """Decorator: refuse-list guard + audit log around a tool call.
+
+    The decorated coroutine must accept ``target`` as a keyword argument.
     """
     def wrap(fn: Callable[..., Awaitable[dict[str, Any]]]):
         @functools.wraps(fn)
         async def inner(target: str, **kwargs) -> dict[str, Any]:
+            # Refuse-list short-circuit. Honors KALIMCP_ALLOW_REFUSED=1
+            # for operators who genuinely need to scan a refused target.
+            refusal = authz.is_refused(target)
+            if refusal:
+                audit.log(
+                    "refused",
+                    tool=tool_name,
+                    target=target,
+                    reason=refusal,
+                )
+                return {
+                    "ok": False,
+                    "error": "refused",
+                    "message": refusal,
+                }
+
             with audit.time_block() as elapsed:
                 try:
                     result = await fn(target=target, **kwargs)
@@ -34,7 +65,7 @@ def active_tool(tool_name: str):
                         "error": "tool_exception",
                         "message": str(exc),
                     }
-            
+
             audit.log(
                 "tool_invoke",
                 tool=tool_name,
@@ -45,6 +76,6 @@ def active_tool(tool_name: str):
                 truncated=result.get("truncated", False),
             )
             return {"ok": True, **result}
-        
+
         return inner
     return wrap

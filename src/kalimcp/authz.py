@@ -1,37 +1,31 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Aaron K. Clark
-"""Authorization model: tokens map to a target scope.
+"""Refuse list + authorization-record helpers.
 
-Every active-scan tool (nmap, nikto, gobuster, sslscan) requires an
-``authorization_token`` parameter. The token is looked up in the
-on-disk authorizations file (default: ~/.kalimcp/authorizations.json,
-overridable via KALIMCP_AUTHZ_FILE) and the target is validated
-against that token's scope.
+Two pieces live here, decoupled since cc66cf8:
 
-A scope is a list of allowed target patterns:
+  1. The **refuse list** — `.gov` / `.mil` / financial-services
+     domains and cloud-instance metadata endpoints. Enforced at the
+     start of every active-scan tool call via ``is_refused()`` (see
+     ``tools/_active.py``). Override with the environment variable
+     ``KALIMCP_ALLOW_REFUSED=1`` (the operator opts in explicitly
+     and accepts the consequences).
 
+  2. The **Authorization record** model + ``kalimcp-authz`` CLI —
+     scope-pattern matching and token storage. The active-scan
+     tools no longer take an ``authorization_token`` parameter (the
+     scope-check is no longer required to invoke a scan), but the
+     scope-match logic and CLI remain available for operators who
+     want to use it programmatically.
+
+Scope patterns supported by the Authorization model:
   * CIDR blocks: "10.0.0.0/24", "192.168.1.0/24", "203.0.113.42/32"
   * Domain globs: "example.com", "*.example.com", "*.lab.local"
   * URLs: "https://example.com/api" (the host portion is matched)
 
-A scan whose target doesn't match ANY pattern in scope is REFUSED
-with a structured error. Operators add tokens via the
-``kalimcp-authz`` CLI:
-
-    kalimcp-authz add --name "Q3 pentest engagement" \\
-                     --scope 203.0.113.0/24 --scope "*.client.example.com" \\
-                     --expires 2026-08-01T00:00:00Z
-
-Authorization tokens are NEVER logged in plaintext — the audit log
-records a sha256 prefix (8 chars) of the token, the auth record's
-``name``, and the matched scope entry.
-
-Refuse list (cannot be added to scope):
-  * RFC 1918 ranges are ALLOWED by default for lab work, but the
-    refuse list blocks .gov, .mil, well-known cloud-metadata IPs,
-    and a handful of financial-services TLDs. Override only by
-    setting KALIMCP_ALLOW_REFUSED=1 AND having a token with
-    explicit_unsafe=true.
+Authorization tokens are NEVER logged in plaintext — when used,
+the audit log records a sha256 prefix (8 chars) of the token, the
+auth record's ``name``, and the matched scope entry.
 """
 
 from __future__ import annotations
@@ -151,8 +145,25 @@ def find_authorization(token: str, authzs: list[Authorization] | None = None) ->
     return None
 
 
+def is_refused(target: str, *, allow_refused: bool | None = None) -> str | None:
+    """Return a refuse reason if target is on the refuse list, else None.
+
+    `allow_refused` defaults to checking the ``KALIMCP_ALLOW_REFUSED``
+    environment variable (``"1"`` opts in to scanning refused targets).
+    Pass an explicit bool to override the env check — useful in tests.
+    """
+    if allow_refused is None:
+        allow_refused = os.getenv("KALIMCP_ALLOW_REFUSED") == "1"
+    return _is_refused(target, allow_refused=allow_refused)
+
+
 def _is_refused(target: str, *, allow_refused: bool = False) -> str | None:
-    """Return a refuse reason if target is on the refuse list, else None."""
+    """Return a refuse reason if target is on the refuse list, else None.
+
+    Kept as the internal implementation; ``is_refused`` is the public
+    wrapper that handles ``KALIMCP_ALLOW_REFUSED`` env-var defaulting.
+    Existing tests in ``tests/test_authz.py`` still target this name.
+    """
     if allow_refused:
         return None
     host = _extract_host(target)

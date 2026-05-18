@@ -1,112 +1,106 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Aaron K. Clark
+"""Smoke-test MCP client for kalimcp.
+
+Connects to the kalimcp MCP server over stdio, lists the exposed
+tools, and runs one passive call (`dig_record`) plus one active
+call (`nmap_scan` against 127.0.0.1) to verify end-to-end wiring.
+
+No authorization token is required — the active-scan tools stopped
+taking one in cc66cf8. The refuse-list guard (`KALIMCP_ALLOW_REFUSED`
+to override) still applies but doesn't matter for 127.0.0.1.
+
+Usage:
+    # via the venv-installed kalimcp script (preferred):
+    python test_mcp_client.py
+
+    # with an explicit binary path:
+    KALIMCP_BIN=/path/to/.venv/bin/kalimcp python test_mcp_client.py
 """
-Simple MCP client to test kalimcp server
-"""
+
+from __future__ import annotations
+
 import asyncio
 import os
+import shutil
+
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-async def main():
-    # Server parameters - pointing to our kalimcp server
-    server_params = StdioServerParameters(
-        command="/home/hermes/KaliMCP/.venv/bin/kalimcp",
-        args=[],
-        env=None
+
+def _kalimcp_bin() -> str:
+    """Locate the kalimcp executable.
+
+    Honors KALIMCP_BIN, falls back to whatever `kalimcp` resolves to
+    on PATH (typically a venv with the package installed).
+    """
+    explicit = os.getenv("KALIMCP_BIN")
+    if explicit:
+        return explicit
+    found = shutil.which("kalimcp")
+    if found:
+        return found
+    raise RuntimeError(
+        "Could not find a `kalimcp` binary. Set KALIMCP_BIN=/path/to/venv/bin/kalimcp "
+        "or install the package into a venv on PATH."
     )
-    
-    print("Connecting to kalimcp server...")
-    
+
+
+async def main() -> None:
+    server_params = StdioServerParameters(
+        command=_kalimcp_bin(),
+        args=[],
+        env=None,
+    )
+
+    print(f"Connecting to kalimcp via {server_params.command} ...")
+
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
-            # Initialize the connection
             await session.initialize()
-            print("Connected to kalimcp server")
-            
-            # List available tools
+            print("Connected.")
+
             tools_result = await session.list_tools()
             print("\nAvailable tools:")
             for tool in tools_result.tools:
                 print(f"  - {tool.name}: {tool.description}")
-            
-            # Try dig_record (passive tool)
-            print("\n--- Testing dig_record (passive tool) ---")
+
+            # 1. Passive call — exercises the audit-log path with no
+            #    network reach into the target. dig hits a public
+            #    resolver, not the queried domain itself.
+            print("\n--- dig_record example.com A ---")
             try:
                 dig_result = await session.call_tool(
                     "dig_record",
-                    {"domain": "example.com", "record_type": "A"}
+                    {"domain": "example.com", "record_type": "A"},
                 )
-                print("dig_record result:")
                 for content in dig_result.content:
-                    if hasattr(content, 'text'):
+                    if hasattr(content, "text"):
                         print(content.text)
             except Exception as e:
                 print(f"Error calling dig_record: {e}")
-            
-            # Try an active tool (requires auth) - use the new token that includes localhost and LAN
-            print("\n--- Testing nmap_scan (active tool) on localhost ---")
+
+            # 2. Active call — uses the loopback so no operator
+            #    consent / scope question. Refuse-list doesn't apply
+            #    to 127.0.0.1. Skip with NO_ACTIVE=1 if running
+            #    somewhere nmap is disallowed.
+            if os.getenv("NO_ACTIVE") == "1":
+                print("\nSkipping active nmap_scan (NO_ACTIVE=1).")
+                return
+
+            print("\n--- nmap_scan 127.0.0.1 tcp-fast ---")
             try:
-                # Use the token that includes 127.0.0.1 and 172.16.27.0/21
-                token = "znFJ1p5tCqTKCBqWsMLw03arozBhWf41KFcVMSTMnbg"
-                print(f"Using token: {token}")
                 nmap_result = await session.call_tool(
                     "nmap_scan",
-                    {
-                        "target": "127.0.0.1",  # Scan localhost
-                        "profile": "tcp-fast",
-                        "authorization_token": token
-                    }
+                    {"target": "127.0.0.1", "profile": "tcp-fast"},
                 )
-                print("nmap_scan result:")
                 for content in nmap_result.content:
-                    if hasattr(content, 'text'):
+                    if hasattr(content, "text"):
                         print(content.text)
             except Exception as e:
                 print(f"Error calling nmap_scan: {e}")
-                import traceback
-                traceback.print_exc()
-            
-            # Try scanning a host on the LAN (e.g., gateway)
-            print("\n--- Testing nmap_scan (active tool) on LAN gateway ---")
-            try:
-                # Gateway from ip addr: 172.16.27.183/21 -> network is 172.16.24.0/21
-                # Let's try .1 (common gateway)
-                token = "znFJ1p5tCqTKCBqWsMLw03arozBhWf41KFcVMSTMnbg"
-                print(f"Using token: {token}")
-                nmap_result2 = await session.call_tool(
-                    "nmap_scan",
-                    {
-                        "target": "172.16.24.1",  # Possible gateway
-                        "profile": "tcp-fast",
-                        "authorization_token": token
-                    }
-                )
-                print("nmap_scan result for 172.16.24.1:")
-                for content in nmap_result2.content:
-                    if hasattr(content, 'text'):
-                        print(content.text)
-            except Exception as e:
-                print(f"Error calling nmap_scan on gateway: {e}")
-                
-            # Try scanning another host in the LAN - our own IP
-            print("\n--- Testing nmap_scan (active tool) on self ---")
-            try:
-                token = "znFJ1p5tCqTKCBqWsMLw03arozBhWf41KFcVMSTMnbg"
-                print(f"Using token: {token}")
-                nmap_result3 = await session.call_tool(
-                    "nmap_scan",
-                    {
-                        "target": "172.16.27.183",  # Our own IP from ip addr
-                        "profile": "tcp-fast",
-                        "authorization_token": token
-                    }
-                )
-                print("nmap_scan result for 172.16.27.183:")
-                for content in nmap_result3.content:
-                    if hasattr(content, 'text'):
-                        print(content.text)
-            except Exception as e:
-                print(f"Error calling nmap_scan on self: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
