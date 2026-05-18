@@ -36,9 +36,8 @@ import hashlib
 import ipaddress
 import json
 import os
-import re
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DEFAULT_AUTHZ_FILE = Path.home() / ".kalimcp" / "authorizations.json"
@@ -81,9 +80,9 @@ class Authorization:
             when = datetime.fromisoformat(self.expires.replace("Z", "+00:00"))
         except ValueError:
             return False
-        ref = now or datetime.now(timezone.utc)
+        ref = now or datetime.now(UTC)
         if when.tzinfo is None:
-            when = when.replace(tzinfo=timezone.utc)
+            when = when.replace(tzinfo=UTC)
         return ref >= when
 
 

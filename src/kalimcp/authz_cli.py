@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import secrets
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from . import authz
 
@@ -46,7 +46,7 @@ def cmd_add(args: argparse.Namespace) -> int:
     print(f"  scope:   {list(a.scope)}")
     print(f"  expires: {a.expires or '(never)'}")
     if a.explicit_unsafe:
-        print(f"  explicit_unsafe: True")
+        print("  explicit_unsafe: True")
     print()
     print("Token (write this down — won't be shown again):")
     print(f"  {a.token}")
@@ -58,7 +58,7 @@ def cmd_list(args: argparse.Namespace) -> int:
     if not existing:
         print("(no authorizations configured)")
         return 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for a in existing:
         status = "EXPIRED" if a.is_expired(now=now) else "active"
         unsafe = " UNSAFE" if a.explicit_unsafe else ""
@@ -114,8 +114,8 @@ def build_parser() -> argparse.ArgumentParser:
                         "Requires KALIMCP_ALLOW_REFUSED=1 at runtime too.")
     a.set_defaults(func=cmd_add)
 
-    l = sub.add_parser("list", help="List all configured authorizations.")
-    l.set_defaults(func=cmd_list)
+    list_p = sub.add_parser("list", help="List all configured authorizations.")
+    list_p.set_defaults(func=cmd_list)
 
     r = sub.add_parser("remove", help="Remove an authorization by name or token id.")
     r.add_argument("identifier", help="Authorization name OR 8-char token id.")

@@ -22,7 +22,7 @@ def _reset(monkeypatch):
 
 
 def _read_lines(path: Path):
-    return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l]
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
 def test_explicit_path_used(tmp_path):

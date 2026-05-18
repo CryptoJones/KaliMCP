@@ -4,16 +4,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from kalimcp.authz import (
     Authorization,
     AuthzError,
-    check,
     _is_refused,
     _scope_matches,
+    check,
 )
 
 
@@ -102,7 +102,7 @@ def test_check_rejects_unknown_token():
 
 
 def test_check_rejects_expired_token():
-    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
     with pytest.raises(AuthzError, match="expired"):
         check(target="example.com", token="tok-secret",
               authzs=[_auth(["example.com"], expires=past)])

@@ -110,6 +110,6 @@ async def test_audit_log_includes_argv_on_invoke(tmp_path, monkeypatch):
     # Read the appended audit log line back.
     import json
     lines = log_path.read_text().strip().splitlines()
-    invoke = [json.loads(l) for l in lines if json.loads(l).get("event") == "tool_invoke"]
+    invoke = [json.loads(line) for line in lines if json.loads(line).get("event") == "tool_invoke"]
     assert invoke, "no tool_invoke event written"
     assert invoke[-1]["argv"] == ["fake-cli", "--flag", "127.0.0.1"]

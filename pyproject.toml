@@ -45,6 +45,7 @@ kalimcp-authz = "kalimcp.authz_cli:main"
 dev = [
   "pytest>=7",
   "pytest-asyncio>=0.23",
+  "ruff>=0.6",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -54,3 +55,22 @@ packages = ["src/kalimcp"]
 testpaths = ["tests"]
 addopts = "-ra"
 asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+# Default ruff selection (E, F, W) plus a handful of high-signal extras.
+# B = bugbear (catches mutable defaults, except-Exception, etc.).
+# I = import sorting. UP = pyupgrade hints.
+select = ["E", "F", "W", "B", "I", "UP"]
+ignore = [
+  "E501",   # line length — let formatter handle if we add one later
+  "UP032",  # f-string nags on multiline format() calls
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests are allowed to use bare `assert` and have longer fixtures.
+"tests/**" = ["E402"]

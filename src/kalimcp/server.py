@@ -31,7 +31,6 @@ Or, if running through Docker:
 
 from __future__ import annotations
 
-import asyncio
 import sys
 
 from mcp.server.fastmcp import FastMCP

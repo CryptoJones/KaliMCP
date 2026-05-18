@@ -23,7 +23,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -102,7 +102,7 @@ def log(event: str, **fields: Any) -> None:
     if path is None:
         return
     entry = {
-        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "ts": datetime.now(UTC).isoformat(timespec="seconds"),
         "event": event,
     }
     for k, v in fields.items():

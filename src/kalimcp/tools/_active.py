@@ -20,7 +20,8 @@ when its documented behavior turned out to no longer match reality.
 from __future__ import annotations
 
 import functools
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from .. import audit, authz
 
