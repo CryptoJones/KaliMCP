@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from .. import run
-from ._active import authorized
+from ._active import active_tool
 
 # Profiles intentionally limit what nmap can do. Operators who want
 # fancier scans should add a profile here and submit a PR — not
@@ -21,20 +21,17 @@ _PROFILES = {
 }
 
 
-@authorized(tool_name="nmap")
+@active_tool(tool_name="nmap")
 async def scan(
     *,
     target: str,
-    authorization_token: str,
     profile: str = "tcp-fast",
     timeout_seconds: int = 300,
-    _auth: Any = None,
 ) -> dict[str, Any]:
     """Run an nmap scan against `target` using a named profile.
 
     Args:
-      target: hostname, IP, or CIDR block. Must be in the auth token's scope.
-      authorization_token: as configured via `kalimcp-authz add`.
+      target: hostname, IP, or CIDR block.
       profile: one of {tcp-fast, tcp-full, service-scan, udp-top-50, ping-sweep}.
       timeout_seconds: hard wallclock cap (default 300).
 

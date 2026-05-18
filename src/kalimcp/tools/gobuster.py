@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import run
-from ._active import authorized
+from ._active import active_tool
 
 # Common wordlist paths on Kali — try each in order.
 _WORDLIST_CANDIDATES = [
@@ -25,21 +25,18 @@ def _default_wordlist() -> str | None:
     return None
 
 
-@authorized(tool_name="gobuster-dir")
+@active_tool(tool_name="gobuster-dir")
 async def dir_scan(
     *,
     target: str,
-    authorization_token: str,
     wordlist: str | None = None,
     threads: int = 10,
     timeout_seconds: int = 600,
-    _auth: Any = None,
 ) -> dict[str, Any]:
     """Directory brute-forcing against `target` URL.
 
     Args:
-      target: URL like `https://example.com/`. Must be in scope.
-      authorization_token: as configured via `kalimcp-authz add`.
+      target: URL like `https://example.com/`.
       wordlist: path to wordlist. Defaults to a known Kali wordlist
         if one is present; returns an error otherwise.
       threads: concurrent requests (default 10; cap 50).

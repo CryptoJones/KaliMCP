@@ -42,24 +42,21 @@ from .tools import gobuster, nikto, nmap, passive, sslscan
 mcp = FastMCP("kalimcp")
 
 
-# ---------- active-scan tools (authorization_token required) ----------
+# ---------- active-scan tools ----------
 
 @mcp.tool()
 async def nmap_scan(
     target: str,
-    authorization_token: str,
     profile: str = "tcp-fast",
     timeout_seconds: int = 300,
 ) -> dict:
     """Run nmap against `target` using a named profile.
 
-    Requires a valid `authorization_token` whose scope covers
-    `target`. Profiles: tcp-fast, tcp-full, service-scan,
+    Profiles: tcp-fast, tcp-full, service-scan,
     udp-top-50, ping-sweep.
     """
     return await nmap.scan(
         target=target,
-        authorization_token=authorization_token,
         profile=profile,
         timeout_seconds=timeout_seconds,
     )
@@ -68,17 +65,13 @@ async def nmap_scan(
 @mcp.tool()
 async def nikto_scan(
     target: str,
-    authorization_token: str,
     ssl: bool = False,
     timeout_seconds: int = 600,
 ) -> dict:
     """Run nikto web-vulnerability scanner against `target` URL.
-
-    Requires a valid `authorization_token` whose scope covers `target`.
     """
     return await nikto.scan(
         target=target,
-        authorization_token=authorization_token,
         ssl=ssl,
         timeout_seconds=timeout_seconds,
     )
@@ -87,19 +80,15 @@ async def nikto_scan(
 @mcp.tool()
 async def gobuster_dir(
     target: str,
-    authorization_token: str,
     wordlist: str | None = None,
     threads: int = 10,
     timeout_seconds: int = 600,
 ) -> dict:
     """Directory brute-forcing on `target` URL via gobuster.
-
-    Requires a valid `authorization_token` whose scope covers `target`.
     Wordlist defaults to a known Kali path (dirb common.txt etc.).
     """
     return await gobuster.dir_scan(
         target=target,
-        authorization_token=authorization_token,
         wordlist=wordlist,
         threads=threads,
         timeout_seconds=timeout_seconds,
@@ -109,17 +98,13 @@ async def gobuster_dir(
 @mcp.tool()
 async def sslscan_scan(
     target: str,
-    authorization_token: str,
     port: int = 443,
     timeout_seconds: int = 120,
 ) -> dict:
     """Enumerate TLS protocols, ciphers, cert for `target:port` via sslscan.
-
-    Requires a valid `authorization_token` whose scope covers `target`.
     """
     return await sslscan.scan(
         target=target,
-        authorization_token=authorization_token,
         port=port,
         timeout_seconds=timeout_seconds,
     )

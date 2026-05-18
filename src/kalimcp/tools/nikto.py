@@ -7,23 +7,20 @@ from __future__ import annotations
 from typing import Any
 
 from .. import run
-from ._active import authorized
+from ._active import active_tool
 
 
-@authorized(tool_name="nikto")
+@active_tool(tool_name="nikto")
 async def scan(
     *,
     target: str,
-    authorization_token: str,
     ssl: bool = False,
     timeout_seconds: int = 600,
-    _auth: Any = None,
 ) -> dict[str, Any]:
     """Run nikto against `target` (URL or host).
 
     Args:
-      target: URL like `https://example.com/` or host:port. Must be in scope.
-      authorization_token: as configured via `kalimcp-authz add`.
+      target: URL like `https://example.com/` or host:port.
       ssl: force-enable SSL/TLS detection.
       timeout_seconds: hard wallclock cap (default 600 — nikto is slow).
     """
