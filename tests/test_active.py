@@ -85,3 +85,31 @@ async def test_wrapped_exception_returned_as_structured_error():
     assert result["ok"] is False
     assert result["error"] == "tool_exception"
     assert "simulated tool failure" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_audit_log_includes_argv_on_invoke(tmp_path, monkeypatch):
+    """tool_invoke events should carry the argv from the wrapped run() result."""
+    from kalimcp import audit
+
+    log_path = tmp_path / "audit.log"
+    monkeypatch.setenv("KALIMCP_LOG_FILE", str(log_path))
+    audit.configure()
+
+    @active_tool("test-argv")
+    async def stub(target: str, **kwargs):
+        return {
+            "exit_code": 0,
+            "argv": ["fake-cli", "--flag", target],
+            "stdout": "",
+        }
+
+    result = await stub(target="127.0.0.1")
+    assert result["ok"] is True
+
+    # Read the appended audit log line back.
+    import json
+    lines = log_path.read_text().strip().splitlines()
+    invoke = [json.loads(l) for l in lines if json.loads(l).get("event") == "tool_invoke"]
+    assert invoke, "no tool_invoke event written"
+    assert invoke[-1]["argv"] == ["fake-cli", "--flag", "127.0.0.1"]

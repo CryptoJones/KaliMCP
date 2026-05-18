@@ -70,6 +70,10 @@ def active_tool(tool_name: str):
                 "tool_invoke",
                 tool=tool_name,
                 target=target,
+                # argv comes from run.run() — captures the exact CLI
+                # invocation for forensic review. Empty list on the
+                # early-return error paths (unknown profile, etc.).
+                argv=result.get("argv", []),
                 elapsed_ms=elapsed(),
                 exit_code=result.get("exit_code"),
                 timed_out=result.get("timed_out", False),
