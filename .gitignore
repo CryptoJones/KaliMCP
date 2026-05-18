@@ -16,3 +16,7 @@ venv/
 # Authorization files contain live tokens — never commit.
 authorizations.json
 *.authorizations.json
+
+# Runtime audit log (rotates locally, no value in source control).
+kalimcp.log
+*.log
