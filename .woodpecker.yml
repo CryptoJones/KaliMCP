@@ -3,11 +3,18 @@ when:
     branch: main
 
 steps:
+  lint:
+    image: python:3.12-slim
+    commands:
+      - pip install -e '.[dev]'
+      - ruff check src/ tests/
+
   test-3-11:
     image: python:3.11-slim
     commands:
       - pip install -e '.[dev]'
       - pytest -v
+
   test-3-12:
     image: python:3.12-slim
     commands:
