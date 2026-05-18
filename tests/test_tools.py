@@ -41,7 +41,8 @@ async def test_nmap_tcp_fast_argv():
     assert result["ok"] is True
     assert result["profile"] == "tcp-fast"
     argv = m.call_args.args[0]
-    assert argv == ["nmap", "-Pn", "-T4", "--top-ports", "100", "127.0.0.1"]
+    # All profiles now end with `-oX -` (XML to stdout) before the target.
+    assert argv == ["nmap", "-Pn", "-T4", "--top-ports", "100", "-oX", "-", "127.0.0.1"]
 
 
 @pytest.mark.asyncio
@@ -50,6 +51,7 @@ async def test_nmap_service_scan_argv():
         await nmap.scan(target="127.0.0.1", profile="service-scan")
     argv = m.call_args.args[0]
     assert "-sV" in argv
+    assert "-oX" in argv
     assert argv[-1] == "127.0.0.1"
 
 
@@ -59,7 +61,74 @@ async def test_nmap_ping_sweep_argv():
         await nmap.scan(target="10.0.0.0/24", profile="ping-sweep")
     argv = m.call_args.args[0]
     assert "-sn" in argv
+    assert "-oX" in argv
     assert argv[-1] == "10.0.0.0/24"
+
+
+# ---------- nmap XML → JSON parser ----------
+
+_NMAP_XML_SAMPLE = """<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -oX - 127.0.0.1" version="7.95">
+  <host>
+    <status state="up" reason="localhost-response"/>
+    <address addr="127.0.0.1" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="22">
+        <state state="open" reason="syn-ack"/>
+        <service name="ssh" product="OpenSSH" version="9.6p1"/>
+      </port>
+      <port protocol="tcp" portid="80">
+        <state state="closed" reason="conn-refused"/>
+        <service name="http"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>
+"""
+
+
+@pytest.mark.asyncio
+async def test_nmap_parsed_field_populated_on_success():
+    fake = _fake_result(stdout=_NMAP_XML_SAMPLE)
+    with patch("kalimcp.tools.nmap.run.run", new=AsyncMock(return_value=fake)):
+        result = await nmap.scan(target="127.0.0.1", profile="tcp-fast")
+    parsed = result["parsed"]
+    assert len(parsed["hosts"]) == 1
+    host = parsed["hosts"][0]
+    assert host["addr"] == "127.0.0.1"
+    assert host["state"] == "up"
+    assert len(host["ports"]) == 2
+    ssh = next(p for p in host["ports"] if p["portid"] == 22)
+    assert ssh["state"] == "open"
+    assert ssh["service"] == "ssh"
+    assert ssh["product"] == "OpenSSH"
+    assert ssh["version"] == "9.6p1"
+
+
+@pytest.mark.asyncio
+async def test_nmap_parsed_field_empty_on_malformed_xml():
+    fake = _fake_result(stdout="not actually XML")
+    with patch("kalimcp.tools.nmap.run.run", new=AsyncMock(return_value=fake)):
+        result = await nmap.scan(target="127.0.0.1", profile="tcp-fast")
+    # Parser bails out cleanly on bad XML — empty hosts, not an exception.
+    assert result["parsed"] == {"hosts": []}
+
+
+@pytest.mark.asyncio
+async def test_nmap_parsed_field_empty_when_stdout_blank():
+    fake = _fake_result(stdout="")
+    with patch("kalimcp.tools.nmap.run.run", new=AsyncMock(return_value=fake)):
+        result = await nmap.scan(target="127.0.0.1", profile="tcp-fast")
+    assert result["parsed"] == {"hosts": []}
+
+
+@pytest.mark.asyncio
+async def test_nmap_unknown_profile_has_parsed_field_in_error_path():
+    """The error path returns a `parsed` field too, so callers don't have to KeyError-guard."""
+    with patch("kalimcp.tools.nmap.run.run", new=AsyncMock()) as m:
+        result = await nmap.scan(target="127.0.0.1", profile="bogus")
+    m.assert_not_called()
+    assert result["parsed"] == {"hosts": []}
 
 
 @pytest.mark.asyncio

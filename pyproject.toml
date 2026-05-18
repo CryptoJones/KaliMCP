@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kalimcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "MCP server exposing a curated subset of Kali Linux security tools to an AI agent. Refuse-list guard + audit log on every invocation."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -39,7 +39,6 @@ Issues = "https://github.com/CryptoJones/KaliMCP/issues"
 
 [project.scripts]
 kalimcp = "kalimcp.server:main"
-kalimcp-authz = "kalimcp.authz_cli:main"
 
 [project.optional-dependencies]
 dev = [

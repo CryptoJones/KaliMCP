@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-05-17
+
+### Removed (breaking)
+- **`kalimcp-authz` CLI removed.** v0.2 already decoupled the
+  authorization-token model from active-scan invocations; v0.3
+  drops the management CLI too. The `[project.scripts]` entry-point
+  is gone and `src/kalimcp/authz_cli.py` was deleted. The
+  underlying `Authorization` dataclass + load/save helpers stay
+  importable in `kalimcp.authz` for downstream code that wants
+  them programmatically.
+
+### Added
+- **Structured `parsed` field on nmap_scan results.** Every nmap
+  profile now invokes nmap with `-oX -` (XML to stdout). The
+  wrapper parses the XML into:
+    `{"hosts": [{"addr", "addrtype", "state",
+                "ports": [{"portid", "protocol", "state",
+                           "service", "product", "version"}]}]}`
+  Agents consume `result["parsed"]`; raw XML stays in
+  `result["stdout"]` for operators. Parser fails closed (empty
+  `{"hosts": []}`) on malformed XML — no exception propagates.
+
+### Changed
+- nmap profile argv shape changed (every profile now ends with
+  `-oX -` before the target). Existing tests in
+  `tests/test_tools.py` updated to match. Operators who shelled
+  out to nmap via the audit log's `argv` field will see the new
+  flags.
+- `src/kalimcp/authz.py` module docstring rewritten — the
+  Authorization model is now labeled "legacy from v0.1" rather
+  than as an active part of the tool path.
+
 ## [0.2.0] — 2026-05-17
 
 ### Removed (breaking)

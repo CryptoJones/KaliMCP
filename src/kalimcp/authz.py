@@ -1,31 +1,25 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Aaron K. Clark
-"""Refuse list + authorization-record helpers.
+"""Refuse list + (legacy) Authorization helpers.
 
-Two pieces live here, decoupled since cc66cf8:
+The **refuse list** is enforced at the start of every active-scan
+tool call via ``is_refused()`` (see ``tools/_active.py``). Override
+via the environment variable ``KALIMCP_ALLOW_REFUSED=1``. Refused
+patterns: ``.gov`` / ``.mil`` / financial-services domains and
+cloud-instance metadata endpoints.
 
-  1. The **refuse list** — `.gov` / `.mil` / financial-services
-     domains and cloud-instance metadata endpoints. Enforced at the
-     start of every active-scan tool call via ``is_refused()`` (see
-     ``tools/_active.py``). Override with the environment variable
-     ``KALIMCP_ALLOW_REFUSED=1`` (the operator opts in explicitly
-     and accepts the consequences).
+The **Authorization record** dataclass + load/save helpers + the
+``check()`` function are legacy from v0.1, when active-scan tools
+required an ``authorization_token`` parameter. cc66cf8 dropped
+that requirement and v0.3.0 dropped the ``kalimcp-authz`` CLI;
+the dataclass remains importable for downstream code that may use
+it programmatically, but it is no longer wired into the tool path.
 
-  2. The **Authorization record** model + ``kalimcp-authz`` CLI —
-     scope-pattern matching and token storage. The active-scan
-     tools no longer take an ``authorization_token`` parameter (the
-     scope-check is no longer required to invoke a scan), but the
-     scope-match logic and CLI remain available for operators who
-     want to use it programmatically.
-
-Scope patterns supported by the Authorization model:
+Scope patterns supported by the Authorization model (kept for
+that legacy programmatic use):
   * CIDR blocks: "10.0.0.0/24", "192.168.1.0/24", "203.0.113.42/32"
   * Domain globs: "example.com", "*.example.com", "*.lab.local"
   * URLs: "https://example.com/api" (the host portion is matched)
-
-Authorization tokens are NEVER logged in plaintext — when used,
-the audit log records a sha256 prefix (8 chars) of the token, the
-auth record's ``name``, and the matched scope entry.
 """
 
 from __future__ import annotations
