@@ -170,7 +170,7 @@ for the operator knowing their scope.
 
 ## What's NOT here (and why)
 
-KaliMCP v0.1 deliberately ships only **reconnaissance + light
+KaliMCP deliberately ships only **reconnaissance + light
 vulnerability scanning**. The dual-use tools below are NOT exposed
 in this release:
 
@@ -189,9 +189,11 @@ Operators with legitimate need can fork + extend.
 | Version | Feature | Status |
 |---------|---------|--------|
 | v0.1 | nmap / nikto / gobuster / sslscan / whois / dig / searchsploit / cert_dump; audit log; Dockerfile on kali-rolling | shipped |
-| v0.2 | richer audit-log replay | planned |
+| v0.2 | `authorization_token` parameter removed from active-scan tools (breaking); refuse list still enforced; `argv` recorded in `tool_invoke` audit events; ruff lint gate; full test coverage on tool wrappers | shipped |
 | v0.3 | structured nmap XML output → JSON; nikto JSON normalization | planned |
-| v0.4 | sqlmap | planned |
+| v0.4 | sqlmap (URL-prefix scope) | planned |
+
+See [CHANGELOG.md](CHANGELOG.md) for the per-release detail.
 
 ---
 
