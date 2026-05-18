@@ -8,12 +8,13 @@ the writer falls back to ``~/.kalimcp/kalimcp.log`` with a one-time
 stderr breadcrumb.
 
 The audit log is the operator's primary forensic record — every
-``invoke`` event includes the tool name, the (parsed) arguments, the
-authorization token id used (NOT the raw token), the target, the
-exit code, and the elapsed wall-clock time. Tool stdout/stderr are
-NOT logged to keep the file small and to avoid accidentally
-recording credentials a scan returned. Operators who want full
-output should redirect tool stdout themselves.
+``invoke`` event includes the tool name, the (parsed) arguments,
+the target, the exit code, and the elapsed wall-clock time. A
+separate ``refused`` event fires when the active-tool refuse list
+short-circuits a call. Tool stdout/stderr are NOT logged, to keep
+the file small and avoid accidentally recording credentials a
+scan returned. Operators who want full output should redirect
+tool stdout themselves.
 """
 
 from __future__ import annotations

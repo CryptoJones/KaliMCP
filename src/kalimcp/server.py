@@ -110,11 +110,14 @@ async def sslscan_scan(
     )
 
 
-# ---------- passive tools (no authorization required) ----------
+# ---------- passive tools ----------
+# These hit registry / DNS / local search, not the target itself.
+# The refuse-list guard on active-scan tools doesn't apply here —
+# a whois lookup for chase.com is harmless; an nmap scan of it isn't.
 
 @mcp.tool()
 async def whois_lookup(query: str, timeout_seconds: int = 30) -> dict:
-    """Whois registration lookup for a domain or IP. No auth required."""
+    """Whois registration lookup for a domain or IP."""
     return await passive.whois_lookup(query=query, timeout_seconds=timeout_seconds)
 
 
@@ -122,7 +125,7 @@ async def whois_lookup(query: str, timeout_seconds: int = 30) -> dict:
 async def dig_record(domain: str, record_type: str = "A", timeout_seconds: int = 30) -> dict:
     """DNS lookup for `domain`. record_type: A/AAAA/MX/TXT/NS/CNAME/SOA/etc.
 
-    No auth required — dig hits the resolver, not the target.
+    Hits the resolver, not the target.
     """
     return await passive.dig_record(
         domain=domain, record_type=record_type, timeout_seconds=timeout_seconds,
@@ -131,7 +134,7 @@ async def dig_record(domain: str, record_type: str = "A", timeout_seconds: int =
 
 @mcp.tool()
 async def searchsploit_search(keyword: str, timeout_seconds: int = 30) -> dict:
-    """Local Exploit-DB search via `searchsploit`. No auth — local-only."""
+    """Local Exploit-DB search via `searchsploit` — entirely local."""
     return await passive.searchsploit_search(keyword=keyword, timeout_seconds=timeout_seconds)
 
 
@@ -139,8 +142,8 @@ async def searchsploit_search(keyword: str, timeout_seconds: int = 30) -> dict:
 async def cert_dump(host: str, port: int = 443, timeout_seconds: int = 30) -> dict:
     """Dump TLS cert chain for `host:port` via openssl s_client.
 
-    No auth required — single TLS handshake, equivalent to a browser
-    visiting the site. Useful for pre-engagement cert/CN/SAN review.
+    Single TLS handshake, equivalent to a browser visiting the site.
+    Useful for pre-engagement cert / CN / SAN review.
     """
     return await passive.cert_dump(host=host, port=port, timeout_seconds=timeout_seconds)
 

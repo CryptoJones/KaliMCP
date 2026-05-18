@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "kalimcp"
 version = "0.1.0"
-description = "MCP server wrapping authorized-use Kali Linux security tools with token-scoped target allowlist + audit log."
+description = "MCP server exposing a curated subset of Kali Linux security tools to an AI agent. Refuse-list guard + audit log on every invocation."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
