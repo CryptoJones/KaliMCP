@@ -41,9 +41,11 @@ from .tools import (
     gobuster,
     hashcat,
     hydra,
+    impacket,
     john,
     ldap,
     medusa,
+    msfvenom,
     netexec,
     nikto,
     nmap,
@@ -53,6 +55,7 @@ from .tools import (
     sqlmap,
     sslscan,
     whatweb,
+    winrm,
 )
 
 mcp = FastMCP("kalimcp")
@@ -356,6 +359,148 @@ async def hashcat_crack(
         mode=mode,
         wordlist=wordlist,
         attack_mode=attack_mode,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+# ---------- Windows AD post-exploit ----------
+
+@mcp.tool()
+async def impacket_getnpusers(
+    target: str,
+    dc_ip: str = "",
+    user_list: str = "",
+    timeout_seconds: int = 120,
+) -> dict:
+    """Enumerate AS-REP-roastable users in an AD domain.
+
+    `target` is the AD domain (e.g. `corp.local`). `user_list` is a
+    file of usernames to test; if empty, an authenticated bind is
+    required (passed via `<domain>/<user>:<password>` in target —
+    not yet supported here, use `user_list` for the unauth path).
+    """
+    return await impacket.getnpusers(
+        target=target,
+        dc_ip=dc_ip,
+        user_list=user_list,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def impacket_getuserspns(
+    target: str,
+    username: str,
+    password: str = "",
+    nthash: str = "",
+    dc_ip: str = "",
+    timeout_seconds: int = 180,
+) -> dict:
+    """Kerberoast — enumerate SPN-mapped users and request their TGS hashes."""
+    return await impacket.getuserspns(
+        target=target,
+        username=username,
+        password=password,
+        nthash=nthash,
+        dc_ip=dc_ip,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def impacket_secretsdump(
+    target: str,
+    username: str = "",
+    password: str = "",
+    nthash: str = "",
+    just_dc: bool = False,
+    timeout_seconds: int = 600,
+) -> dict:
+    """Dump SAM / LSA / NTDS secrets from a Windows target.
+
+    For DCSync against a DC pass `just_dc=True` plus credentials
+    with Replicate-Directory-Changes rights.
+    """
+    return await impacket.secretsdump(
+        target=target,
+        username=username,
+        password=password,
+        nthash=nthash,
+        just_dc=just_dc,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def impacket_smbclient(
+    target: str,
+    username: str,
+    password: str = "",
+    nthash: str = "",
+    command: str = "shares",
+    timeout_seconds: int = 120,
+) -> dict:
+    """One-shot SMB command via impacket smbclient.py."""
+    return await impacket.smbclient(
+        target=target,
+        username=username,
+        password=password,
+        nthash=nthash,
+        command=command,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def winrm_exec(
+    target: str,
+    username: str,
+    command: str,
+    password: str = "",
+    nthash: str = "",
+    timeout_seconds: int = 120,
+) -> dict:
+    """Run a single PowerShell command on a Windows host over WinRM."""
+    return await winrm.execute(
+        target=target,
+        username=username,
+        command=command,
+        password=password,
+        nthash=nthash,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def msfvenom_payload(
+    target: str,
+    payload: str,
+    lhost: str,
+    lport: int = 4444,
+    format: str = "exe",
+    encoder: str = "",
+    iterations: int = 1,
+    badchars: str = "",
+    timeout_seconds: int = 120,
+) -> dict:
+    """Generate a payload with msfvenom.
+
+    `target` is a free-form descriptor logged in the audit trail
+    (e.g. "win10-corp-laptop") — it does NOT reach msfvenom.
+    `payload` is the msfvenom payload spec (e.g.
+    `windows/x64/meterpreter/reverse_tcp`). Payload bytes are
+    written to `~/.kalimcp/payloads/<sha256>.<ext>`; the MCP result
+    returns path + sha256 + size, never raw bytes.
+    """
+    return await msfvenom.generate(
+        target=target,
+        payload=payload,
+        lhost=lhost,
+        lport=lport,
+        format=format,
+        encoder=encoder,
+        iterations=iterations,
+        badchars=badchars,
         timeout_seconds=timeout_seconds,
     )
 

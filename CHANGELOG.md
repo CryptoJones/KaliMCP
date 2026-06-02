@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] — 2026-06-02
+
+### Added — Windows AD post-exploit
+
+Six new MCP tools for Active Directory post-exploitation work.
+The impacket suite + a single-shot WinRM executor + msfvenom
+payload generation cover the lateral-movement / loot-collection /
+payload-staging surface that operators need once a foothold is
+established.
+
+- **`impacket_getnpusers`** — AS-REP roastable user enumeration
+  via `impacket-GetNPUsers`. Parses `$krb5asrep$…` hash lines into
+  `{users_no_preauth: [{user, hash}]}`.
+- **`impacket_getuserspns`** — Kerberoasting via
+  `impacket-GetUserSPNs`. Parses `$krb5tgs$…` hash lines into
+  `{spns: [{user, spn, hash}]}`. Supports pass-the-hash auth via
+  `nthash` instead of `password`.
+- **`impacket_secretsdump`** — SAM / LSA / NTDS dump via
+  `impacket-secretsdump`. Parses `user:rid:lmhash:nthash:::`
+  lines into `{secrets: [{principal, rid, lmhash, nthash}],
+  kerberos_keys: [...], cleartext: [...]}`. DCSync mode via
+  `just_dc=True`.
+- **`impacket_smbclient`** — one-shot SMB command via
+  `impacket-smbclient`. Pipes the command via stdin (the binary is
+  interactive by default). Parsed output is the captured response
+  lines with the smbclient prompt stripped.
+- **`winrm_exec`** — single PowerShell command over WinRM via
+  `netexec winrm -X`. Cleaner than spinning up evil-winrm for a
+  single command. Parsed output is the captured command lines
+  with netexec's banner markers stripped.
+- **`msfvenom_payload`** — Metasploit payload generator (NOT the
+  framework). Writes payload bytes to
+  `~/.kalimcp/payloads/<sha256>.<ext>` and returns
+  `{path, sha256, size_bytes, format, payload, lhost, lport}`.
+  Raw bytes are NEVER returned in the MCP result — operators
+  retrieve the file off the box themselves. Supports encoder /
+  iterations / badchars passthrough.
+
+All Windows-credential-bearing wrappers declare secret_flags
+(`-password`, `-hashes`, `--password`, `-H`, `--hash`) so the
+audit log never carries credentials verbatim.
+
+### Changed
+
+- Dockerfile adds `impacket-scripts` and `metasploit-framework`
+  (only msfvenom is wired; msfconsole / module exec stay out of
+  scope).
+
 ## [0.7.0] — 2026-06-02
 
 ### Added — credential operations

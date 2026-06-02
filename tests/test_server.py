@@ -34,6 +34,12 @@ EXPECTED_TOOLS = {
     "medusa_crack",
     "john_crack",
     "hashcat_crack",
+    "impacket_getnpusers",
+    "impacket_getuserspns",
+    "impacket_secretsdump",
+    "impacket_smbclient",
+    "winrm_exec",
+    "msfvenom_payload",
     "whois_lookup",
     "dig_record",
     "searchsploit_search",
@@ -68,6 +74,9 @@ async def test_active_tools_no_longer_take_authorization_token():
         "smb_enum", "snmp_enum", "ldap_enum",
         "netexec_spray", "medusa_crack",
         "john_crack", "hashcat_crack",
+        "impacket_getnpusers", "impacket_getuserspns",
+        "impacket_secretsdump", "impacket_smbclient",
+        "winrm_exec", "msfvenom_payload",
     )
     for tool in tools:
         if tool.name not in active:

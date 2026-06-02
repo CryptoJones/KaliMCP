@@ -85,6 +85,17 @@ clients):
 | `hashcat_crack` | `hashcat` | GPU-accelerated offline hash cracking |
 | `sqlmap_scan` | `sqlmap` | automated SQL injection detection + exploitation; 4 profiles |
 
+**Windows AD post-exploit**
+
+| Tool | Wraps | Purpose |
+|------|-------|---------|
+| `impacket_getnpusers` | `GetNPUsers.py` | AS-REP roastable user enumeration |
+| `impacket_getuserspns` | `GetUserSPNs.py` | Kerberoasting (request SPN TGS hashes) |
+| `impacket_secretsdump` | `secretsdump.py` | SAM / LSA / NTDS dump (incl. DCSync) |
+| `impacket_smbclient` | `smbclient.py` | one-shot SMB shell command |
+| `winrm_exec` | `netexec winrm -X` | one-shot PowerShell over WinRM |
+| `msfvenom_payload` | `msfvenom` | payload generation (NO Metasploit framework) |
+
 **Passive lookups**
 
 | Tool | Wraps | Purpose |
@@ -195,9 +206,11 @@ Kerberos pre-auth enum (kerbrute), AD post-exploit (impacket
 suite, evil-winrm), and an engagement workspace so the agent has
 working memory across calls. See the Status table below.
 
-Out of scope for now: the Metasploit framework itself (modules,
-msfconsole). msfvenom for payload generation only is on the
-post-exploit-phase roadmap.
+Out of scope: the Metasploit framework's exploit modules and the
+`msfconsole` driver. `msfvenom_payload` ships in v0.8 — payload
+generation only, with output written to disk (operators retrieve
+the binary themselves) so the MCP server never serves executable
+bytes inline.
 
 ---
 
@@ -212,6 +225,8 @@ post-exploit-phase roadmap.
 | v0.5 | structured `parsed` JSON for `nikto_scan`, `sslscan_scan`, `gobuster_dir` | shipped |
 | v0.6 | recon expansion: ffuf, whatweb, smb/snmp/ldap enum | shipped |
 | v0.7 | credential operations: netexec, medusa, john, hashcat; argv-secret redaction in audit log | shipped |
+| v0.8 | Windows AD post-exploit: impacket suite (NPUsers/UserSPNs/secretsdump/smbclient), winrm_exec, msfvenom payload generation | shipped |
+| v0.9 | engagement workspace (`~/.kalimcp/engagements/<name>/`) — findings/creds/loot/screenshots + scope-warning audit | planned |
 | (later) | Go-binary recon tools (subfinder, feroxbuster, gowitness, kerbrute) — need curl-install layers in Dockerfile | planned |
 | v0.7 | credential operations: netexec, medusa, john, hashcat, responder; argv-secret redaction in audit log | planned |
 | v0.8 | post-exploit (Windows AD): impacket suite, evil-winrm, msfvenom payload generation | planned |

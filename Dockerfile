@@ -47,6 +47,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         medusa \
         john \
         hashcat \
+        impacket-scripts \
+        metasploit-framework \
         wordlists seclists \
         ca-certificates \
         && apt-get clean \

@@ -13,9 +13,11 @@ from . import (
     gobuster,
     hashcat,
     hydra,
+    impacket,
     john,
     ldap,
     medusa,
+    msfvenom,
     netexec,
     nikto,
     nmap,
@@ -25,6 +27,7 @@ from . import (
     sqlmap,
     sslscan,
     whatweb,
+    winrm,
 )
 
 __all__ = [
@@ -32,9 +35,11 @@ __all__ = [
     "gobuster",
     "hashcat",
     "hydra",
+    "impacket",
     "john",
     "ldap",
     "medusa",
+    "msfvenom",
     "netexec",
     "nikto",
     "nmap",
@@ -44,4 +49,5 @@ __all__ = [
     "sqlmap",
     "sslscan",
     "whatweb",
+    "winrm",
 ]
