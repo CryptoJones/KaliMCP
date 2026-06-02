@@ -3,18 +3,19 @@
 """Shared decorator for active-scan tools.
 
 Provides ``active_tool`` — wraps a coroutine that hits a target
-over the network (nmap, nikto, gobuster, sslscan). The decorator:
+over the network. The decorator:
 
-  1. Checks the **refuse list** (``authz.is_refused``) and bails
-     with a structured error before any subprocess starts if the
-     target is on it. Override with ``KALIMCP_ALLOW_REFUSED=1`` in
-     the environment.
-  2. Times the call and appends a single audit-log line on
-     completion (or ``tool_exception`` on failure).
+  1. Calls ``authz.is_refused(target)``. As of 2143fdd the refuse
+     list is intentionally a no-op (``is_refused`` always returns
+     ``None``); the call site remains so a future operator can
+     re-enable refuse patterns from one place without re-plumbing
+     every wrapper. ``KALIMCP_ALLOW_REFUSED=1`` is still honored.
+  2. Times the call and appends a single ``tool_invoke`` audit-log
+     line on completion (or ``tool_exception`` on failure).
 
-Authorization tokens were removed in cc66cf8; the refuse list
-remained as a code-level safety guardrail and was re-wired here
-when its documented behavior turned out to no longer match reality.
+The audit log at ``/var/log/kalimcp.log`` is the operator-
+accountability mechanism; the refuse list was removed because
+declaring scope is the operator's job, not a hard-coded TLD list's.
 """
 
 from __future__ import annotations

@@ -1,22 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Aaron K. Clark
-"""Refuse list + (legacy) Authorization helpers.
+"""Refuse-list stub + (legacy) Authorization helpers.
 
-The **refuse list** is enforced at the start of every active-scan
-tool call via ``is_refused()`` (see ``tools/_active.py``). Override
-via the environment variable ``KALIMCP_ALLOW_REFUSED=1``. Refused
-patterns: ``.gov`` / ``.mil`` / financial-services domains and
-cloud-instance metadata endpoints.
+The refuse list was removed in 2143fdd. ``is_refused()`` now
+unconditionally returns ``None``; the function is kept so the
+``active_tool`` decorator's call site doesn't need rewiring if a
+future operator wants to restore per-target refusal. The
+hard-coded refuse pattern constants below are retained for that
+same restoration scenario but are not consulted.
 
-The **Authorization record** dataclass + load/save helpers + the
+The ``Authorization`` dataclass + load/save helpers + the
 ``check()`` function are legacy from v0.1, when active-scan tools
 required an ``authorization_token`` parameter. cc66cf8 dropped
 that requirement and v0.3.0 dropped the ``kalimcp-authz`` CLI;
-the dataclass remains importable for downstream code that may use
-it programmatically, but it is no longer wired into the tool path.
+the dataclass and ``_scope_matches`` helper remain importable for
+downstream code that wants programmatic scope matching, but they
+are no longer wired into the tool path.
 
-Scope patterns supported by the Authorization model (kept for
-that legacy programmatic use):
+Scope patterns understood by ``_scope_matches``:
   * CIDR blocks: "10.0.0.0/24", "192.168.1.0/24", "203.0.113.42/32"
   * Domain globs: "example.com", "*.example.com", "*.lab.local"
   * URLs: "https://example.com/api" (the host portion is matched)

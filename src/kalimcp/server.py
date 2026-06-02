@@ -36,7 +36,7 @@ import sys
 from mcp.server.fastmcp import FastMCP
 
 from . import audit
-from .tools import gobuster, nikto, nmap, passive, sslscan
+from .tools import gobuster, hydra, nikto, nmap, passive, sqlmap, sslscan
 
 mcp = FastMCP("kalimcp")
 
@@ -105,6 +105,52 @@ async def sslscan_scan(
     return await sslscan.scan(
         target=target,
         port=port,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def hydra_crack(
+    target: str,
+    service: str,
+    username_list: str = "",
+    password_list: str = "",
+    profile: str = "standard",
+    timeout_seconds: int = 300,
+) -> dict:
+    """Network logon brute-force against `target`'s `service` via hydra.
+
+    Profiles: quick (fasttrack list), standard (rockyou),
+    comprehensive (rockyou + 16 tasks), bruteforce (charset walk).
+    Pass `username_list` / `password_list` to override profile defaults.
+    `service` is a hydra service spec: ssh, ftp, smb, http-post-form, etc.
+    """
+    return await hydra.crack(
+        target=target,
+        service=service,
+        username_list=username_list,
+        password_list=password_list,
+        profile=profile,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def sqlmap_scan(
+    target: str,
+    profile: str = "standard",
+    timeout_seconds: int = 600,
+) -> dict:
+    """Automated SQL injection probe against a URL via sqlmap.
+
+    Profiles: quick (level 1, risk 1), standard (level 2, risk 2),
+    comprehensive (level 3, risk 3), exploit (level 5, risk 3,
+    all techniques). `target` should be a full URL including the
+    parameter to test, e.g. http://host/page.php?id=1.
+    """
+    return await sqlmap.scan(
+        target=target,
+        profile=profile,
         timeout_seconds=timeout_seconds,
     )
 

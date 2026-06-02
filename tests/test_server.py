@@ -23,6 +23,8 @@ EXPECTED_TOOLS = {
     "nikto_scan",
     "gobuster_dir",
     "sslscan_scan",
+    "hydra_crack",
+    "sqlmap_scan",
     "whois_lookup",
     "dig_record",
     "searchsploit_search",
@@ -50,7 +52,10 @@ async def test_active_tools_no_longer_take_authorization_token():
     would silently break clients written against the v0.2 surface.
     """
     tools = await server.mcp.list_tools()
-    active = ("nmap_scan", "nikto_scan", "gobuster_dir", "sslscan_scan")
+    active = (
+        "nmap_scan", "nikto_scan", "gobuster_dir", "sslscan_scan",
+        "hydra_crack", "sqlmap_scan",
+    )
     for tool in tools:
         if tool.name not in active:
             continue
@@ -61,6 +66,33 @@ async def test_active_tools_no_longer_take_authorization_token():
             f"{tool.name} still has an authorization_token parameter — "
             f"v0.2 dropped that. Regression."
         )
+
+
+@pytest.mark.asyncio
+async def test_hydra_crack_required_inputs():
+    """hydra_crack should require `target` and `service`; the rest default."""
+    tools = await server.mcp.list_tools()
+    tool = next(t for t in tools if t.name == "hydra_crack")
+    schema = tool.inputSchema or {}
+    required = set(schema.get("required", []))
+    assert "target" in required
+    assert "service" in required
+    props = schema.get("properties", {})
+    for opt in ("username_list", "password_list", "profile", "timeout_seconds"):
+        assert opt in props
+
+
+@pytest.mark.asyncio
+async def test_sqlmap_scan_required_inputs():
+    """sqlmap_scan should require `target`; `profile` and `timeout_seconds` default."""
+    tools = await server.mcp.list_tools()
+    tool = next(t for t in tools if t.name == "sqlmap_scan")
+    schema = tool.inputSchema or {}
+    required = set(schema.get("required", []))
+    assert "target" in required
+    props = schema.get("properties", {})
+    assert "profile" in props
+    assert "timeout_seconds" in props
 
 
 @pytest.mark.asyncio

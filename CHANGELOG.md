@@ -5,6 +5,98 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-06-02
+
+### Added
+- **Structured `parsed` field on every active-scan tool.** Until
+  now only `nmap_scan` returned a parsed dict; `nikto_scan`,
+  `gobuster_dir`, and `sslscan_scan` dumped raw stdout that agents
+  had to brittle-text-parse. Now all four follow the nmap pattern:
+    * `nikto_scan.parsed` — `{target_host, target_ip, target_port,
+      server, vulnerabilities: [{msg} or {uri, msg}]}` extracted
+      from nikto's line-oriented text output. The text format has
+      been stable across versions; XML/JSON modes are not.
+    * `sslscan_scan.parsed` — `{host, port, protocols: [{name,
+      enabled}], ciphers: [{name, bits, status, sslversion, ...}],
+      cert: {subject, issuer, not_before, not_after, sigalg,
+      key_type, key_bits, altnames}, vulnerabilities:
+      {heartbleed, compression, fallback_scsv,
+      renegotiation_secure}}` extracted from sslscan's XML. Argv
+      now includes `--xml=-` (breaking change to argv shape;
+      operators tailing the audit log will see the new flag).
+    * `gobuster_dir.parsed` — `{paths_found: [{path, status,
+      size?, redirect?}]}` extracted via regex from gobuster's
+      stable text output. gobuster has no clean machine-readable
+      mode, so a regex parser is the least-bad option.
+- Each tool's early-return error paths (missing wordlist, etc.)
+  now also populate `parsed` with empty containers so agents
+  never have to `KeyError`-guard.
+- Parser tests in `tests/test_tools.py` covering populated,
+  malformed, and empty-stdout cases for all three tools.
+
+### Changed
+- `sslscan_scan` argv shape: now `["sslscan", "--xml=-",
+  "--port=<n>", "<target>"]`. Existing test for the default port
+  updated to match. Operators monitoring the `argv` field in the
+  audit log will see the new `--xml=-` flag.
+
+## [0.4.0] — 2026-06-02
+
+### Added
+- **`hydra_crack` MCP tool** — network logon brute-force against
+  ssh/ftp/smb/http-post-form/… via hydra. Four profiles: `quick`
+  (fasttrack wordlist), `standard` (rockyou), `comprehensive`
+  (rockyou + 16 tasks), `bruteforce` (charset walk via `-x`).
+  Operator can override profile defaults with `username_list` /
+  `password_list`. Output is parsed into a structured `parsed`
+  block: `{success, credentials_found: [{host, service, username,
+  password}], hosts_tested, services_tested, statistics}`.
+- **`sqlmap_scan` MCP tool** — automated SQL injection probe
+  against a target URL. Four profiles: `quick` / `standard` /
+  `comprehensive` / `exploit` (level 5, risk 3, all techniques).
+  Output parsed into `{success, vulnerable, injection_points: [...],
+  dbms: {name, version}, hosts_tested, statistics}`.
+- New per-tool tests in `tests/test_tools.py` covering argv shape
+  per profile, unknown-profile error path, custom-list override
+  (hydra), and parsed-output extraction from fixed sample outputs.
+- New tool surface assertions in `tests/test_server.py`
+  (`hydra_crack` and `sqlmap_scan` registered; both still reject
+  the legacy `authorization_token` parameter).
+
+### Changed
+- **Refuse list is removed and documented as removed.** Commit
+  `2143fdd` had already stripped the list's enforcement
+  (`authz._is_refused` is a no-op stub returning `None`). v0.4
+  reconciles `README.md`, `CHANGELOG.md`, and the module
+  docstrings in `src/kalimcp/authz.py` and
+  `src/kalimcp/tools/_active.py` so the documented behavior
+  matches the code. The audit log at `/var/log/kalimcp.log`
+  remains the operator-accountability mechanism; operator scope is
+  the operator's responsibility, not a hard-coded TLD list's.
+  `KALIMCP_ALLOW_REFUSED=1` is still honored but presently
+  inert.
+- README "What's NOT here" section trimmed: hydra and sqlmap are
+  no longer excluded. Multi-release roadmap (v0.5 → v0.9) added
+  to the Status table.
+- `hydra.py` argv builder rewritten: the WIP version emitted
+  duplicate `-L`/`-P` flags (once from a hard-coded default in the
+  wrapper, again from the profile constant) and silently ignored
+  caller-supplied `username_list`/`password_list` because the
+  profile flags ran later in argv. New `_PROFILES` schema is a
+  dict mapping profile name → `{wordlist, flags}`; the wrapper
+  resolves wordlists once and emits each `-L`/`-P` exactly once.
+- `hydra.py` credential regex corrected to match real hydra
+  output. The WIP pattern expected `[IP][service]` in the first
+  two brackets; real hydra emits `[PORT][service] host: IP login:
+  USER password: PASS`. Hosts/services lists now use
+  `dict.fromkeys` to preserve insertion order.
+
+### Fixed
+- `tests/test_tools.py`: every `@pytest.mark.asyncio` had been
+  rewritten to `@ pytest.mark.asyncio` (stray space) in the
+  staged diff. pytest would have skipped those tests as
+  syntactically valid but un-decorated. All occurrences reverted.
+
 ## [0.3.0] — 2026-05-17
 
 ### Removed (breaking)

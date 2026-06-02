@@ -36,6 +36,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         exploitdb \
         sslscan \
         openssl \
+        hydra \
+        sqlmap \
         wordlists seclists \
         ca-certificates \
         && apt-get clean \

@@ -28,20 +28,21 @@ tools to an AI agent.** Every invocation is audit-logged.
 
 ---
 
-## Read this first
+## Authorization & scope
 
-KaliMCP exposes offensive security tools to an AI agent. The
-operator is responsible for using it only against targets they are
-authorized to scan — pentest engagements with written scope, CTFs
-you have a flag for, your own lab, bug bounty targets where the
-program's scope covers what you're scanning.
+KaliMCP exposes offensive security tools — port scanners, web
+vuln scanners, network logon brute-force, automated SQL injection
+— to an AI agent. The operator is solely responsible for using it
+only against targets they are authorized to scan: pentest
+engagements with written scope, CTFs you have a flag for, your
+own lab, bug bounty programs whose scope covers what you're
+scanning. Cracking passwords or injecting SQL against systems
+without authorization is a federal-grade mistake.
 
-A short refuse list is hard-coded in `src/kalimcp/authz.py` —
-`.gov` / `.mil` / financial-services domains and cloud-instance
-metadata endpoints (`169.254.169.254`) are refused unconditionally
-unless the environment sets `KALIMCP_ALLOW_REFUSED=1`. The refuse
-list is a safety net, not a substitute for the operator knowing
-their scope.
+Every invocation appends one JSON line to `/var/log/kalimcp.log`
+(target, argv, exit code, elapsed time). That audit trail is the
+operator-accountability mechanism; the project does not enforce a
+hard-coded refuse list.
 
 ---
 
@@ -53,10 +54,12 @@ clients):
 
 | Tool | Wraps | Purpose |
 |------|-------|---------|
-| `nmap_scan` | `nmap` | port + service scan (5 named profiles) |
-| `nikto_scan` | `nikto` | web-server vulnerability scan |
-| `gobuster_dir` | `gobuster` | directory / file enumeration |
-| `sslscan_scan` | `sslscan` | TLS / SSL cipher + cert enumeration |
+| `nmap_scan` | `nmap` | port + service scan (5 named profiles); structured `parsed` JSON |
+| `nikto_scan` | `nikto` | web-server vulnerability scan; structured `parsed` JSON |
+| `gobuster_dir` | `gobuster` | directory / file enumeration; structured `parsed` JSON |
+| `sslscan_scan` | `sslscan` | TLS / SSL cipher + cert enumeration; structured `parsed` JSON |
+| `hydra_crack` | `hydra` | network logon brute-force (ssh/ftp/smb/http-…); 4 profiles |
+| `sqlmap_scan` | `sqlmap` | automated SQL injection detection + exploitation; 4 profiles |
 | `whois_lookup` | `whois` | domain / IP registration info |
 | `dig_record` | `dig` | DNS record lookup |
 | `searchsploit_search` | `searchsploit` | local Exploit-DB grep |
@@ -121,7 +124,7 @@ Edit (or create) `~/.claude/mcp.json`:
 }
 ```
 
-Restart Claude Code. The eight tools above will be available to the
+Restart Claude Code. The tools above will be available to the
 agent. Ask it to **"scan 10.0.0.5 with nmap-fast"** and it will
 issue the call.
 
@@ -151,36 +154,21 @@ affect tool execution. `KALIMCP_NO_LOG=1` disables it entirely
 
 ---
 
-## Refuse list
+## What's NOT here (yet)
 
-These targets are refused unconditionally unless the environment
-sets `KALIMCP_ALLOW_REFUSED=1`:
+KaliMCP is on a multi-release red-team kit overhaul. The current
+release covers reconnaissance, web-vuln, and the first wave of
+auth + SQLi tooling (hydra, sqlmap). Planned in subsequent
+releases: structured JSON output for `nikto`/`gobuster`/`sslscan`,
+subdomain enumeration (amass/subfinder), web fuzzing (ffuf),
+HTTP fingerprinting (whatweb), credential spraying (netexec),
+Kerberos pre-auth enum (kerbrute), AD post-exploit (impacket
+suite, evil-winrm), and an engagement workspace so the agent has
+working memory across calls. See the Status table below.
 
-| Pattern | Why |
-|---------|-----|
-| `*.gov`, `*.mil`, `*.gov.uk` (etc) | scanning these without a written contract is a federal-crime-grade mistake |
-| `chase.com`, `bankofamerica.com`, ... | financial services have specific safe-harbor rules |
-| `169.254.169.254` | cloud-instance metadata endpoint (AWS/GCP/Azure) |
-
-The refuse list is intentionally short. It catches the most common
-"oh god I didn't mean to scan that" cases; it is not a substitute
-for the operator knowing their scope.
-
----
-
-## What's NOT here (and why)
-
-KaliMCP deliberately ships only **reconnaissance + light
-vulnerability scanning**. The dual-use tools below are NOT exposed
-in this release:
-
-- **Exploitation frameworks** (Metasploit modules, msfconsole).
-- **Credential brute-force** (hydra, medusa).
-- **SQL injection automation** (sqlmap).
-- **Password cracking** against captured hashes — local-only and
-  arguably defensive, but easy to misuse.
-
-Operators with legitimate need can fork + extend.
+Out of scope for now: the Metasploit framework itself (modules,
+msfconsole). msfvenom for payload generation only is on the
+post-exploit-phase roadmap.
 
 ---
 
@@ -189,9 +177,14 @@ Operators with legitimate need can fork + extend.
 | Version | Feature | Status |
 |---------|---------|--------|
 | v0.1 | nmap / nikto / gobuster / sslscan / whois / dig / searchsploit / cert_dump; audit log; Dockerfile on kali-rolling | shipped |
-| v0.2 | `authorization_token` parameter removed from active-scan tools (breaking); refuse list still enforced; `argv` recorded in `tool_invoke` audit events; ruff lint gate; full test coverage on tool wrappers | shipped |
-| v0.3 | structured nmap XML output → JSON; nikto JSON normalization | planned |
-| v0.4 | sqlmap (URL-prefix scope) | planned |
+| v0.2 | `authorization_token` parameter removed from active-scan tools (breaking); `argv` recorded in `tool_invoke` audit events; ruff lint gate; full test coverage on tool wrappers | shipped |
+| v0.3 | structured nmap XML output → JSON; `kalimcp-authz` CLI dropped | shipped |
+| v0.4 | `hydra_crack` + `sqlmap_scan` wired in; refuse list removed (audit log remains the accountability channel) | shipped |
+| v0.5 | structured `parsed` JSON for `nikto_scan`, `sslscan_scan`, `gobuster_dir` | shipped |
+| v0.6 | recon expansion: subdomain_enum (amass/subfinder), whatweb, ffuf, feroxbuster, smb/snmp/ldap enum, web_screenshot, kerbrute | planned |
+| v0.7 | credential operations: netexec, medusa, john, hashcat, responder; argv-secret redaction in audit log | planned |
+| v0.8 | post-exploit (Windows AD): impacket suite, evil-winrm, msfvenom payload generation | planned |
+| v0.9 | engagement workspace (`~/.kalimcp/engagements/<name>/`) — findings + creds + loot + screenshots + scope-warning audit | planned |
 
 See [CHANGELOG.md](CHANGELOG.md) for the per-release detail.
 
