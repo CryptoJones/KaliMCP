@@ -43,6 +43,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         enum4linux-ng \
         snmp \
         ldap-utils \
+        netexec \
+        medusa \
+        john \
+        hashcat \
         wordlists seclists \
         ca-certificates \
         && apt-get clean \

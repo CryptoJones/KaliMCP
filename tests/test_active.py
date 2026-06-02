@@ -107,3 +107,69 @@ async def test_audit_log_includes_argv_on_invoke(tmp_path, monkeypatch):
     invoke = [json.loads(line) for line in lines if json.loads(line).get("event") == "tool_invoke"]
     assert invoke, "no tool_invoke event written"
     assert invoke[-1]["argv"] == ["fake-cli", "--flag", "127.0.0.1"]
+    # No secret_flags declared → secrets_redacted is False.
+    assert invoke[-1]["secrets_redacted"] is False
+
+
+@pytest.mark.asyncio
+async def test_audit_log_redacts_secret_flag_values(tmp_path, monkeypatch):
+    """Values following secret-bearing flags should be sha256:<hex> in the audit log."""
+    from kalimcp import audit
+
+    log_path = tmp_path / "audit.log"
+    monkeypatch.setenv("KALIMCP_LOG_FILE", str(log_path))
+    audit.configure()
+
+    @active_tool("test-redact", secret_flags={"-p", "--password"})
+    async def stub(target: str, **kwargs):
+        return {
+            "exit_code": 0,
+            "argv": [
+                "fake-cli", "-u", "alice", "-p", "hunter2",
+                "--password", "s3cret!", "--target", target,
+            ],
+            "stdout": "",
+        }
+
+    await stub(target="192.168.1.10")
+
+    import json
+    lines = log_path.read_text().strip().splitlines()
+    invoke = [json.loads(line) for line in lines if json.loads(line).get("event") == "tool_invoke"]
+    assert invoke, "no tool_invoke event written"
+    argv = invoke[-1]["argv"]
+    # Username is not a secret — left in plain.
+    assert "alice" in argv
+    # Both password literals are replaced.
+    assert "hunter2" not in argv
+    assert "s3cret!" not in argv
+    # Replacement format: sha256:<8hex>.
+    redacted = [t for t in argv if t.startswith("sha256:")]
+    assert len(redacted) == 2
+    for r in redacted:
+        assert len(r) == len("sha256:") + 8
+    assert invoke[-1]["secrets_redacted"] is True
+
+
+@pytest.mark.asyncio
+async def test_audit_log_no_redaction_when_no_secret_flag_present(tmp_path, monkeypatch):
+    """If a wrapper sets secret_flags but the argv has none, secrets_redacted=False."""
+    from kalimcp import audit
+
+    log_path = tmp_path / "audit.log"
+    monkeypatch.setenv("KALIMCP_LOG_FILE", str(log_path))
+    audit.configure()
+
+    @active_tool("test-no-redact", secret_flags={"--password"})
+    async def stub(target: str, **kwargs):
+        return {
+            "exit_code": 0,
+            "argv": ["fake-cli", "-u", "alice", "--host", target],
+            "stdout": "",
+        }
+
+    await stub(target="192.168.1.10")
+    import json
+    lines = log_path.read_text().strip().splitlines()
+    invoke = [json.loads(line) for line in lines if json.loads(line).get("event") == "tool_invoke"]
+    assert invoke[-1]["secrets_redacted"] is False

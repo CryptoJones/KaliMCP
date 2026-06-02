@@ -44,6 +44,12 @@ Every invocation appends one JSON line to `/var/log/kalimcp.log`
 operator-accountability mechanism; the project does not enforce a
 hard-coded refuse list.
 
+Credential tools (`hydra_crack`, `medusa_crack`, `netexec_spray`,
+`john_crack`, `hashcat_crack`) take password / hash / wordlist
+values on the command line. Those values are redacted in the
+audit log — the flag stays, but the value is rewritten to
+`sha256:<8hex>` so the literal never lands in the log file.
+
 ---
 
 ## What it does
@@ -68,11 +74,15 @@ clients):
 | `snmp_enum` | `snmp-check` | SNMP enumeration (hostname / contact / processes / software) |
 | `ldap_enum` | `ldapsearch` | anonymous LDAP rootDSE query (naming contexts / vendor) |
 
-**Auth & SQLi**
+**Auth & credentials**
 
 | Tool | Wraps | Purpose |
 |------|-------|---------|
 | `hydra_crack` | `hydra` | network logon brute-force (ssh/ftp/smb/http-…); 4 profiles |
+| `medusa_crack` | `medusa` | alt logon brute-force (different protocol modules: cvs/afp/smbnt) |
+| `netexec_spray` | `netexec` | credential spray across smb/winrm/ldap/mssql/ssh; pass-the-hash |
+| `john_crack` | `john` | offline hash cracking |
+| `hashcat_crack` | `hashcat` | GPU-accelerated offline hash cracking |
 | `sqlmap_scan` | `sqlmap` | automated SQL injection detection + exploitation; 4 profiles |
 
 **Passive lookups**
@@ -201,6 +211,7 @@ post-exploit-phase roadmap.
 | v0.4 | `hydra_crack` + `sqlmap_scan` wired in; refuse list removed (audit log remains the accountability channel) | shipped |
 | v0.5 | structured `parsed` JSON for `nikto_scan`, `sslscan_scan`, `gobuster_dir` | shipped |
 | v0.6 | recon expansion: ffuf, whatweb, smb/snmp/ldap enum | shipped |
+| v0.7 | credential operations: netexec, medusa, john, hashcat; argv-secret redaction in audit log | shipped |
 | (later) | Go-binary recon tools (subfinder, feroxbuster, gowitness, kerbrute) — need curl-install layers in Dockerfile | planned |
 | v0.7 | credential operations: netexec, medusa, john, hashcat, responder; argv-secret redaction in audit log | planned |
 | v0.8 | post-exploit (Windows AD): impacket suite, evil-winrm, msfvenom payload generation | planned |

@@ -30,6 +30,10 @@ EXPECTED_TOOLS = {
     "smb_enum",
     "snmp_enum",
     "ldap_enum",
+    "netexec_spray",
+    "medusa_crack",
+    "john_crack",
+    "hashcat_crack",
     "whois_lookup",
     "dig_record",
     "searchsploit_search",
@@ -62,6 +66,8 @@ async def test_active_tools_no_longer_take_authorization_token():
         "hydra_crack", "sqlmap_scan",
         "ffuf_fuzz", "whatweb_fingerprint",
         "smb_enum", "snmp_enum", "ldap_enum",
+        "netexec_spray", "medusa_crack",
+        "john_crack", "hashcat_crack",
     )
     for tool in tools:
         if tool.name not in active:

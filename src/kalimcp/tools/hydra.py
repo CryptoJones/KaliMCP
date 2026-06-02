@@ -98,7 +98,7 @@ def _parse_output(text: str) -> dict[str, Any]:
     return result
 
 
-@active_tool(tool_name="hydra")
+@active_tool(tool_name="hydra", secret_flags={"-L", "-P", "-l", "-p"})
 async def crack(
     *,
     target: str,

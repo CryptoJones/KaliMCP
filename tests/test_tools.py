@@ -20,8 +20,12 @@ import pytest
 from kalimcp.tools import (
     ffuf,
     gobuster,
+    hashcat,
     hydra,
+    john,
     ldap,
+    medusa,
+    netexec,
     nikto,
     nmap,
     passive,
@@ -1155,3 +1159,236 @@ async def test_ldap_parsed_field_empty_when_stdout_blank():
     assert parsed["host"] == "dc.corp.local"
     assert parsed["port"] == 389
     assert parsed["naming_contexts"] == []
+
+
+# ---------- netexec ----------
+
+_NETEXEC_OUTPUT_SAMPLE = """SMB         192.168.1.10    445    DC01             [*] Windows Server 2019 Build 17763 x64 (name:DC01) (domain:CORP) (signing:False) (SMBv1:False)
+SMB         192.168.1.10    445    DC01             [+] CORP\\administrator:Password123 (Pwn3d!)
+SMB         192.168.1.11    445    WS01             [-] CORP\\administrator:Password123 STATUS_LOGON_FAILURE
+SMB         192.168.1.12    445    WS02             [+] CORP\\alice:hunter2
+"""
+
+
+@pytest.mark.asyncio
+async def test_netexec_argv_shape_single_pair():
+    with patch("kalimcp.tools.netexec.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await netexec.spray(
+            target="192.168.1.0/24",
+            protocol="smb",
+            username="admin",
+            password="hunter2",
+        )
+    argv = m.call_args.args[0]
+    assert argv[:3] == ["netexec", "smb", "192.168.1.0/24"]
+    assert "-u" in argv and argv[argv.index("-u") + 1] == "admin"
+    assert "-p" in argv and argv[argv.index("-p") + 1] == "hunter2"
+
+
+@pytest.mark.asyncio
+async def test_netexec_argv_shape_pass_the_hash():
+    with patch("kalimcp.tools.netexec.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await netexec.spray(
+            target="192.168.1.10",
+            protocol="winrm",
+            username="admin",
+            nthash="aad3b435b51404eeaad3b435b51404ee",
+        )
+    argv = m.call_args.args[0]
+    assert argv[1] == "winrm"
+    assert "-H" in argv
+    assert "-p" not in argv  # nthash takes precedence over password
+
+
+@pytest.mark.asyncio
+async def test_netexec_unknown_protocol_returns_error():
+    with patch("kalimcp.tools.netexec.run.run", new=AsyncMock()) as m:
+        result = await netexec.spray(
+            target="192.168.1.10",
+            protocol="bogus",
+            username="admin",
+            password="x",
+        )
+    m.assert_not_called()
+    assert result["exit_code"] == -1
+
+
+@pytest.mark.asyncio
+async def test_netexec_missing_creds_returns_error():
+    with patch("kalimcp.tools.netexec.run.run", new=AsyncMock()) as m:
+        result = await netexec.spray(target="192.168.1.10", protocol="smb")
+    m.assert_not_called()
+    assert result["exit_code"] == -1
+    assert "username" in result["stderr"].lower() or "secret" in result["stderr"].lower()
+
+
+@pytest.mark.asyncio
+async def test_netexec_parsed_field_populated_on_success():
+    fake = _fake_result(stdout=_NETEXEC_OUTPUT_SAMPLE)
+    with patch("kalimcp.tools.netexec.run.run", new=AsyncMock(return_value=fake)):
+        result = await netexec.spray(
+            target="192.168.1.0/24",
+            protocol="smb",
+            username="administrator",
+            password="Password123",
+        )
+    parsed = result["parsed"]
+    assert parsed["protocol"] == "smb"
+    assert len(parsed["successes"]) == 2
+    by_host = {s["host"]: s for s in parsed["successes"]}
+    dc = by_host["192.168.1.10"]
+    assert dc["user"] == "administrator"
+    assert dc["secret"] == "Password123"
+    assert dc["domain"] == "CORP"
+    assert dc["pwned"] is True
+    assert by_host["192.168.1.12"]["pwned"] is False
+    assert parsed["failures_count"] == 1
+
+
+# ---------- medusa ----------
+
+_MEDUSA_OUTPUT_SAMPLE = """Medusa v2.2 [http://www.foofus.net]
+ACCOUNT CHECK: [ssh] Host: 192.168.1.10 (1 of 1, 0 complete) User: alice (1 of 1, 0 complete) Password: hunter2 (1 of 1 complete)
+ACCOUNT FOUND: [ssh] Host: 192.168.1.10 User: alice Password: hunter2 [SUCCESS]
+"""
+
+
+@pytest.mark.asyncio
+async def test_medusa_argv_shape():
+    with patch("kalimcp.tools.medusa.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await medusa.crack(
+            target="192.168.1.10",
+            module="ssh",
+            user_list="/tmp/users.txt",
+            pass_list="/tmp/pass.txt",
+        )
+    argv = m.call_args.args[0]
+    assert argv[0] == "medusa"
+    assert argv[argv.index("-h") + 1] == "192.168.1.10"
+    assert argv[argv.index("-U") + 1] == "/tmp/users.txt"
+    assert argv[argv.index("-P") + 1] == "/tmp/pass.txt"
+    assert argv[argv.index("-M") + 1] == "ssh"
+    assert "-F" in argv
+
+
+@pytest.mark.asyncio
+async def test_medusa_threads_clamped():
+    with patch("kalimcp.tools.medusa.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await medusa.crack(
+            target="192.168.1.10",
+            module="ssh",
+            user_list="/u",
+            pass_list="/p",
+            threads=999,
+        )
+    argv = m.call_args.args[0]
+    assert argv[argv.index("-t") + 1] == "32"
+
+
+@pytest.mark.asyncio
+async def test_medusa_missing_lists_returns_error():
+    with patch("kalimcp.tools.medusa.run.run", new=AsyncMock()) as m:
+        result = await medusa.crack(target="192.168.1.10", module="ssh")
+    m.assert_not_called()
+    assert result["exit_code"] == -1
+
+
+@pytest.mark.asyncio
+async def test_medusa_parsed_field_extracts_credentials():
+    fake = _fake_result(stdout=_MEDUSA_OUTPUT_SAMPLE)
+    with patch("kalimcp.tools.medusa.run.run", new=AsyncMock(return_value=fake)):
+        result = await medusa.crack(
+            target="192.168.1.10",
+            module="ssh",
+            user_list="/u",
+            pass_list="/p",
+        )
+    parsed = result["parsed"]
+    assert parsed["success"] is True
+    assert len(parsed["credentials_found"]) == 1
+    cred = parsed["credentials_found"][0]
+    assert cred["host"] == "192.168.1.10"
+    assert cred["service"] == "ssh"
+    assert cred["username"] == "alice"
+    assert cred["password"] == "hunter2"
+    assert parsed["hosts_tested"] == ["192.168.1.10"]
+    assert parsed["services_tested"] == ["ssh"]
+
+
+# ---------- john ----------
+
+_JOHN_SHOW_SAMPLE = """alice:hunter2:1001:1001::/home/alice:/bin/bash
+bob:s3cret:1002:1002::/home/bob:/bin/bash
+
+2 password hashes cracked, 1 left
+"""
+
+
+@pytest.mark.asyncio
+async def test_john_argv_shape():
+    with patch("kalimcp.tools.john.run.run",
+               new=AsyncMock(return_value=_fake_result(stdout=""))) as m:
+        await john.crack(target="/loot/hashes.txt", wordlist="/wl.txt")
+    # Two calls: crack pass, then show pass. We assert on the first.
+    crack_call = m.call_args_list[0]
+    crack_argv = crack_call.args[0]
+    assert crack_argv == ["john", "--wordlist=/wl.txt", "/loot/hashes.txt"]
+    show_call = m.call_args_list[1]
+    show_argv = show_call.args[0]
+    assert show_argv == ["john", "--show", "/loot/hashes.txt"]
+
+
+@pytest.mark.asyncio
+async def test_john_parsed_field_extracts_cracked():
+    # First call returns empty, second call (show) returns the show sample.
+    show_result = _fake_result(stdout=_JOHN_SHOW_SAMPLE)
+    crack_result = _fake_result(stdout="")
+    mock_run = AsyncMock(side_effect=[crack_result, show_result])
+    with patch("kalimcp.tools.john.run.run", new=mock_run):
+        result = await john.crack(target="/loot/hashes.txt")
+    parsed = result["parsed"]
+    cracked = parsed["cracked"]
+    users = {c["user"]: c["password"] for c in cracked}
+    assert users == {"alice": "hunter2", "bob": "s3cret"}
+    assert parsed["total_hashes"] == 2
+    assert parsed["remaining"] == 1
+
+
+# ---------- hashcat ----------
+
+_HASHCAT_SHOW_SAMPLE = """aad3b435b51404eeaad3b435b51404ee:hunter2
+b4b9b02e6f09a9bd760f388b67351e2b:s3cret
+"""
+
+
+@pytest.mark.asyncio
+async def test_hashcat_argv_shape():
+    fake = _fake_result(stdout="")
+    with patch("kalimcp.tools.hashcat.run.run", new=AsyncMock(return_value=fake)) as m:
+        await hashcat.crack(target="/loot/hashes.txt", mode=1000)
+    crack_argv = m.call_args_list[0].args[0]
+    assert crack_argv[0] == "hashcat"
+    assert "-m=1000" in crack_argv
+    assert "-a=0" in crack_argv
+    assert "--quiet" in crack_argv
+    # Last two args: hashfile then wordlist (hashcat's argument order).
+    assert crack_argv[-2:] == ["/loot/hashes.txt", "/usr/share/wordlists/rockyou.txt"]
+    show_argv = m.call_args_list[1].args[0]
+    assert "--show" in show_argv
+    assert "-m=1000" in show_argv
+
+
+@pytest.mark.asyncio
+async def test_hashcat_parsed_field_extracts_cracked():
+    crack_result = _fake_result(stdout="")
+    show_result = _fake_result(stdout=_HASHCAT_SHOW_SAMPLE)
+    mock_run = AsyncMock(side_effect=[crack_result, show_result])
+    with patch("kalimcp.tools.hashcat.run.run", new=mock_run):
+        result = await hashcat.crack(target="/loot/hashes.txt", mode=1000)
+    parsed = result["parsed"]
+    assert parsed["mode"] == 1000
+    cracked = parsed["cracked"]
+    assert len(cracked) == 2
+    by_pw = {c["password"] for c in cracked}
+    assert by_pw == {"hunter2", "s3cret"}
+    assert parsed["total_hashes"] == 2

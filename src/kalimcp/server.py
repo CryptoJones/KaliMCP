@@ -39,8 +39,12 @@ from . import audit
 from .tools import (
     ffuf,
     gobuster,
+    hashcat,
     hydra,
+    john,
     ldap,
+    medusa,
+    netexec,
     nikto,
     nmap,
     passive,
@@ -247,6 +251,111 @@ async def ldap_enum(
     return await ldap.enumerate(
         target=target,
         port=port,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+# ---------- credential operations ----------
+# These tools take password / hash literals on the command line.
+# The audit log redacts secret-bearing argv values to sha256:<hex>
+# so the literal never lands on disk; the active_tool decorator
+# enforces that via its `secret_flags=` parameter.
+
+@mcp.tool()
+async def netexec_spray(
+    target: str,
+    protocol: str = "smb",
+    username: str = "",
+    password: str = "",
+    user_list: str = "",
+    pass_list: str = "",
+    nthash: str = "",
+    timeout_seconds: int = 600,
+) -> dict:
+    """Credential spray via netexec across smb/winrm/ldap/mssql/ssh/ftp/rdp/wmi/vnc.
+
+    Pass `username` + `password` for a single-pair test, or
+    `user_list` + `pass_list` (file paths) for a spray. Use
+    `nthash` for pass-the-hash (NTLM) instead of `password`.
+    """
+    return await netexec.spray(
+        target=target,
+        protocol=protocol,
+        username=username,
+        password=password,
+        user_list=user_list,
+        pass_list=pass_list,
+        nthash=nthash,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def medusa_crack(
+    target: str,
+    module: str = "ssh",
+    user_list: str = "",
+    pass_list: str = "",
+    threads: int = 4,
+    timeout_seconds: int = 300,
+) -> dict:
+    """Network-login brute-force via medusa.
+
+    Alternative to hydra with different protocol-module coverage
+    (notably `smbnt`, `cvs`, `afp`). Both `user_list` and
+    `pass_list` file paths are required.
+    """
+    return await medusa.crack(
+        target=target,
+        module=module,
+        user_list=user_list,
+        pass_list=pass_list,
+        threads=threads,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def john_crack(
+    target: str,
+    wordlist: str = "/usr/share/wordlists/rockyou.txt",
+    format: str = "",
+    timeout_seconds: int = 600,
+) -> dict:
+    """Offline hash cracking via John the Ripper.
+
+    `target` is the hashfile path. Runs john --wordlist=... then
+    --show to extract cracked records. Pass `format` if john's
+    auto-detect picks the wrong one (e.g. `format="nt"`).
+    """
+    return await john.crack(
+        target=target,
+        wordlist=wordlist,
+        format=format,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def hashcat_crack(
+    target: str,
+    mode: int,
+    wordlist: str = "/usr/share/wordlists/rockyou.txt",
+    attack_mode: int = 0,
+    timeout_seconds: int = 600,
+) -> dict:
+    """Offline hash cracking via hashcat.
+
+    `target` is the hashfile. `mode` is hashcat's `-m` value (no
+    default; the wrong mode silently produces zero cracks). 1000 =
+    NTLM, 1800 = sha512crypt, 5600 = NetNTLMv2. `attack_mode` is
+    `-a` (0 = wordlist, 3 = brute-force mask).
+    """
+    return await hashcat.crack(
+        target=target,
+        mode=mode,
+        wordlist=wordlist,
+        attack_mode=attack_mode,
         timeout_seconds=timeout_seconds,
     )
 

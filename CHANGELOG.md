@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-06-02
+
+### Added — credential operations
+
+Four new MCP tools for online + offline credential work, plus
+audit-log hardening so secrets never land in the log file:
+
+- **`netexec_spray`** — credential spray via netexec across
+  smb/winrm/ldap/mssql/ssh/ftp/rdp/wmi/vnc. Single-pair
+  (`username` + `password`) or list-based (`user_list` +
+  `pass_list`); pass-the-hash via `nthash`. Parses netexec's
+  ``[+] DOMAIN\\user:secret (Pwn3d!)`` success lines into
+  ``{successes: [{host, proto, domain, user, secret, pwned}],
+  failures_count}``.
+- **`medusa_crack`** — network logon brute-force, alternative to
+  hydra with different protocol-module coverage (notably
+  ``smbnt``, ``cvs``, ``afp``). Parses ``ACCOUNT FOUND`` lines
+  into the same parsed shape as hydra (``credentials_found``,
+  ``hosts_tested``, ``services_tested``).
+- **`john_crack`** — offline hash cracking via John the Ripper.
+  ``target`` is the hashfile path. Two-pass invocation: runs
+  ``john --wordlist=…`` then immediately ``john --show`` to scrape
+  the pot file. Parsed: ``{cracked: [{user, password}], format,
+  remaining, total_hashes}``.
+- **`hashcat_crack`** — offline hash cracking via hashcat. Same
+  run-then-show pattern. Requires explicit ``mode`` (no default —
+  the wrong mode silently produces zero cracks). Parsed:
+  ``{cracked: [{hash, password}], mode, total_hashes}``.
+
+### Added — audit-log hardening
+
+- **`audit.redact_argv(argv, secret_flags)`** rewrites values
+  following secret-bearing flags to ``sha256:<8hex>``. The first
+  8 hex chars of the SHA-256 digest are enough for an operator
+  who suspects the plaintext to verify a match, but offer zero
+  signal if the audit log leaks.
+- **`@active_tool(..., secret_flags={...})`** — the decorator now
+  threads a per-tool secret-flag set. When set, the audit log's
+  ``argv`` field is redacted and a new ``secrets_redacted`` bool
+  records that the rewrite happened. Wrapped tools that declare
+  ``secret_flags``:
+    * ``hydra_crack``: ``{-L, -P, -l, -p}`` (wordlist paths can
+      leak engagement loot)
+    * ``netexec_spray``: ``{-p, --password, -H, --hash}``
+    * ``medusa_crack``: ``{-U, -u, -P, -p}``
+    * ``john_crack``: ``{--wordlist, -w}``
+    * ``hashcat_crack``: ``{-r, --rules-file}``
+- `tool_invoke` audit events now always include a
+  ``secrets_redacted: bool`` field (false for non-credential tools
+  that don't declare a flag set).
+
+### Changed
+
+- Dockerfile adds ``netexec medusa john hashcat`` to the apt
+  install list.
+
 ## [0.6.0] — 2026-06-02
 
 ### Added — recon expansion

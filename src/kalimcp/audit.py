@@ -19,10 +19,12 @@ who want full output should redirect tool stdout themselves.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
 import time
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -134,6 +136,43 @@ def time_block():
             return False
 
     return _T()
+
+
+def redact_argv(argv: list[str], secret_flags: Iterable[str] | None) -> list[str]:
+    """Return a copy of ``argv`` with values following secret-bearing
+    flags replaced by ``sha256:<8hex>``.
+
+    Credential tools (hydra, medusa, netexec, ...) pass passwords or
+    cred-bearing file paths on the command line. Logging argv
+    verbatim would write those literals into the audit file, which
+    defeats the file-mode-0600 discipline applied to a real loot
+    store. This helper rewrites just the secret values; the flag
+    itself stays so operators can still see *that* a credential was
+    used, just not its content.
+
+    The replacement is the first 8 hex chars of the SHA-256 hash of
+    the value, prefixed with ``sha256:``. That lets an operator who
+    has the suspected plaintext verify a match, without exposing
+    anything if the audit log leaks.
+
+    No-op (returns ``argv`` unchanged) when ``secret_flags`` is
+    falsy.
+    """
+    if not secret_flags:
+        return list(argv)
+    flags = set(secret_flags)
+    out: list[str] = []
+    skip_next = False
+    for tok in argv:
+        if skip_next:
+            digest = hashlib.sha256(tok.encode("utf-8", errors="replace")).hexdigest()[:8]
+            out.append(f"sha256:{digest}")
+            skip_next = False
+            continue
+        out.append(tok)
+        if tok in flags:
+            skip_next = True
+    return out
 
 
 def reset_for_test() -> None:
