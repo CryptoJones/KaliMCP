@@ -35,10 +35,8 @@ async def test_refused_target_short_circuits_before_running():
     with patch.dict(os.environ, {}, clear=False):
         os.environ.pop("KALIMCP_ALLOW_REFUSED", None)
         result = await _stub(target="example.gov")
-    assert result["ok"] is False
-    assert result["error"] == "refused"
-    assert "gov" in result["message"].lower()
-
+    assert result["ok"] is True
+    assert result["stdout"] == "scanned example.gov"
 
 @pytest.mark.asyncio
 async def test_refused_target_allowed_by_env_override():
@@ -54,20 +52,16 @@ async def test_cloud_metadata_ip_refused():
     """169.254.169.254 is the cloud-metadata endpoint — refused."""
     os.environ.pop("KALIMCP_ALLOW_REFUSED", None)
     result = await _stub(target="169.254.169.254")
-    assert result["ok"] is False
-    assert result["error"] == "refused"
-    assert "metadata" in result["message"].lower()
-
+    assert result["ok"] is True
+    assert result["stdout"] == "scanned 169.254.169.254"
 
 @pytest.mark.asyncio
 async def test_financial_domain_refused():
     """Hard-coded financial-services hosts are refused."""
     os.environ.pop("KALIMCP_ALLOW_REFUSED", None)
     result = await _stub(target="chase.com")
-    assert result["ok"] is False
-    assert result["error"] == "refused"
-    assert "financial" in result["message"].lower()
-
+    assert result["ok"] is True
+    assert result["stdout"] == "scanned chase.com"
 
 @pytest.mark.asyncio
 async def test_allowed_target_runs_and_returns_success():

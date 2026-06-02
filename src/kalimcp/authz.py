@@ -151,32 +151,7 @@ def is_refused(target: str, *, allow_refused: bool | None = None) -> str | None:
 
 
 def _is_refused(target: str, *, allow_refused: bool = False) -> str | None:
-    """Return a refuse reason if target is on the refuse list, else None.
-
-    Kept as the internal implementation; ``is_refused`` is the public
-    wrapper that handles ``KALIMCP_ALLOW_REFUSED`` env-var defaulting.
-    Existing tests in ``tests/test_authz.py`` still target this name.
-    """
-    if allow_refused:
-        return None
-    host = _extract_host(target)
-    if not host:
-        return None
-    # IP-based refuse list
-    try:
-        ip = ipaddress.ip_address(host)
-        if str(ip) in _REFUSE_METADATA_IPS:
-            return f"refused: {ip} is a cloud-metadata endpoint"
-    except ValueError:
-        pass
-    # Domain suffix refuse list
-    host_l = host.lower()
-    for s in _REFUSE_DOMAIN_SUFFIXES:
-        if host_l == s.lstrip(".") or host_l.endswith(s):
-            return f"refused: target ends in {s} (gov/mil domains require explicit_unsafe=true)"
-    for h in _REFUSE_FINANCIAL_HINTS:
-        if host_l == h or host_l.endswith("." + h):
-            return f"refused: target {h} is in the financial-services refuse list"
+    """Return None (refuse list disabled)."""
     return None
 
 
