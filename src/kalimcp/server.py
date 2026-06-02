@@ -35,7 +35,7 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 
-from . import audit
+from . import audit, engagement
 from .tools import (
     ffuf,
     gobuster,
@@ -541,6 +541,162 @@ async def cert_dump(host: str, port: int = 443, timeout_seconds: int = 30) -> di
     Useful for pre-engagement cert / CN / SAN review.
     """
     return await passive.cert_dump(host=host, port=port, timeout_seconds=timeout_seconds)
+
+
+# ---------- engagement workspace ----------
+# Persistent per-engagement state — findings, creds, loot, notes.
+# Lets the agent query "what hosts have we found?" / "what creds
+# do we have for host X?" across tool calls. Auto-record (toggled
+# by KALIMCP_AUTORECORD=1) mirrors structured `parsed` blocks from
+# the active-scan tools into the workspace.
+
+@mcp.tool()
+async def engagement_create(
+    name: str,
+    scope: list[str] | None = None,
+    operator: str = "",
+) -> dict:
+    """Bootstrap a new engagement.
+
+    `scope` is a list of CIDR / domain-glob / URL patterns. Active-
+    scan tools that hit a target outside scope emit a non-blocking
+    `out_of_scope_warning`. Empty scope = no gate.
+    """
+    result = engagement.create(name=name, scope=scope, operator=operator)
+    audit.log(
+        "engagement_create",
+        name=result.get("name"),
+        ok=result.get("ok", False),
+    )
+    return result
+
+
+@mcp.tool()
+async def engagement_list() -> dict:
+    """List engagements on disk, most-recent first."""
+    return {"engagements": engagement.list_all(), "active": engagement.current_engagement()}
+
+
+@mcp.tool()
+async def engagement_use(name: str) -> dict:
+    """Set the active engagement (persists across MCP-server restarts)."""
+    result = engagement.use(name=name)
+    audit.log("engagement_use", name=name, ok=result.get("ok", False))
+    return result
+
+
+@mcp.tool()
+async def engagement_status(name: str = "") -> dict:
+    """Show metadata + counts for the named (or active) engagement."""
+    return engagement.status(name=name or None)
+
+
+@mcp.tool()
+async def finding_record(
+    category: str,
+    host: str,
+    payload: dict | None = None,
+    source_tool: str = "",
+) -> dict:
+    """Append a structured finding to the active engagement.
+
+    `category` is a free-form tag (`host`, `service`, `sqli`,
+    `subdomain`, ...). Auto-record uses the same machinery for
+    `parsed` extractions from active-scan tools.
+    """
+    ok = engagement.record_finding(category, host, payload, source_tool=source_tool)
+    return {"ok": ok}
+
+
+@mcp.tool()
+async def finding_query(
+    category: str = "",
+    host: str = "",
+    since: str = "",
+    limit: int = 200,
+) -> dict:
+    """Read findings. Empty filters return everything (capped by `limit`)."""
+    return {
+        "findings": engagement.query_findings(
+            category=category or None,
+            host=host or None,
+            since=since or None,
+            limit=limit,
+        ),
+    }
+
+
+@mcp.tool()
+async def host_list() -> dict:
+    """Derive a unique sorted host list from findings + creds."""
+    return {"hosts": engagement.list_hosts()}
+
+
+@mcp.tool()
+async def cred_record(
+    host: str,
+    proto: str,
+    user: str,
+    secret: str,
+    source_tool: str = "",
+) -> dict:
+    """Append a credential to the active engagement's loot cache.
+
+    `secret` is stored verbatim in `creds.jsonl` (mode 0600). The
+    engagement directory is the operator's loot store — put it on
+    encrypted storage if you need at-rest secrecy.
+    """
+    ok = engagement.record_cred(host, proto, user, secret, source_tool=source_tool)
+    return {"ok": ok}
+
+
+@mcp.tool()
+async def cred_query(
+    host: str = "",
+    user: str = "",
+    proto: str = "",
+    limit: int = 200,
+) -> dict:
+    """Read credentials. Empty filters return everything (capped by `limit`)."""
+    return {
+        "credentials": engagement.query_creds(
+            host=host or None,
+            user=user or None,
+            proto=proto or None,
+            limit=limit,
+        ),
+    }
+
+
+@mcp.tool()
+async def loot_write(blob_name: str, data: str) -> dict:
+    """Write a text blob into the engagement's `loot/` directory."""
+    return engagement.write_loot(blob_name, data)
+
+
+@mcp.tool()
+async def loot_list() -> dict:
+    """Enumerate files in the engagement's `loot/` directory."""
+    return {"loot": engagement.list_loot()}
+
+
+@mcp.tool()
+async def loot_read(blob_name: str) -> dict:
+    """Read a loot file. Returns text or base64-encoded bytes."""
+    return engagement.read_loot(blob_name)
+
+
+@mcp.tool()
+async def note_append(text: str) -> dict:
+    """Append a timestamped block to the engagement's notes.md."""
+    ok = engagement.note_append(text)
+    return {"ok": ok}
+
+
+@mcp.tool()
+async def wordlist_list() -> dict:
+    """Enumerate wordlists under /usr/share/wordlists + /usr/share/seclists."""
+    return {"wordlists": engagement.list_wordlists()}
 
 
 def main() -> int:

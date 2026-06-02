@@ -44,6 +44,21 @@ EXPECTED_TOOLS = {
     "dig_record",
     "searchsploit_search",
     "cert_dump",
+    # Engagement workspace
+    "engagement_create",
+    "engagement_list",
+    "engagement_use",
+    "engagement_status",
+    "finding_record",
+    "finding_query",
+    "host_list",
+    "cred_record",
+    "cred_query",
+    "loot_write",
+    "loot_list",
+    "loot_read",
+    "note_append",
+    "wordlist_list",
 }
 
 

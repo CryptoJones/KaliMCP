@@ -96,6 +96,24 @@ clients):
 | `winrm_exec` | `netexec winrm -X` | one-shot PowerShell over WinRM |
 | `msfvenom_payload` | `msfvenom` | payload generation (NO Metasploit framework) |
 
+**Engagement workspace (agent working memory)**
+
+| Tool | Purpose |
+|------|---------|
+| `engagement_create` | bootstrap a new engagement dir with scope + operator |
+| `engagement_list` / `engagement_use` / `engagement_status` | switch & inspect |
+| `finding_record` / `finding_query` / `host_list` | append-only structured findings |
+| `cred_record` / `cred_query` | credential cache (file mode 0600) |
+| `loot_write` / `loot_list` / `loot_read` | extracted blob store |
+| `note_append` | operator free-form notes.md |
+| `wordlist_list` | enumerate wordlists under `/usr/share/wordlists` + seclists |
+
+Set `KALIMCP_AUTORECORD=1` to have active-scan tools mirror their
+parsed findings into the active engagement automatically (nmap →
+findings, hydra/netexec → creds, etc.). If the active engagement
+has a `scope` list, calls to out-of-scope targets get a non-
+blocking `warning: "out_of_scope"` in the result + an audit event.
+
 **Passive lookups**
 
 | Tool | Wraps | Purpose |
@@ -226,7 +244,7 @@ bytes inline.
 | v0.6 | recon expansion: ffuf, whatweb, smb/snmp/ldap enum | shipped |
 | v0.7 | credential operations: netexec, medusa, john, hashcat; argv-secret redaction in audit log | shipped |
 | v0.8 | Windows AD post-exploit: impacket suite (NPUsers/UserSPNs/secretsdump/smbclient), winrm_exec, msfvenom payload generation | shipped |
-| v0.9 | engagement workspace (`~/.kalimcp/engagements/<name>/`) — findings/creds/loot/screenshots + scope-warning audit | planned |
+| v0.9 | engagement workspace (`~/.kalimcp/engagements/<name>/`) — findings/creds/loot/screenshots + scope-warning audit + auto-record hook | shipped |
 | (later) | Go-binary recon tools (subfinder, feroxbuster, gowitness, kerbrute) — need curl-install layers in Dockerfile | planned |
 | v0.7 | credential operations: netexec, medusa, john, hashcat, responder; argv-secret redaction in audit log | planned |
 | v0.8 | post-exploit (Windows AD): impacket suite, evil-winrm, msfvenom payload generation | planned |

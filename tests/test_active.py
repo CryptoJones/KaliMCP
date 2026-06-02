@@ -173,3 +173,191 @@ async def test_audit_log_no_redaction_when_no_secret_flag_present(tmp_path, monk
     lines = log_path.read_text().strip().splitlines()
     invoke = [json.loads(line) for line in lines if json.loads(line).get("event") == "tool_invoke"]
     assert invoke[-1]["secrets_redacted"] is False
+
+
+# ---------- engagement workspace integration ----------
+
+
+@pytest.fixture
+def engagement_workspace(tmp_path, monkeypatch):
+    """Point HOME at tmp_path so workspace state lands there."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("KALIMCP_ENGAGEMENT", raising=False)
+    from pathlib import Path
+
+    from kalimcp import engagement
+    engagement.ROOT_DIR = Path.home() / ".kalimcp"
+    engagement.ENGAGEMENTS_DIR = engagement.ROOT_DIR / "engagements"
+    engagement.ACTIVE_STATE_FILE = engagement.ROOT_DIR / "active_engagement"
+    return engagement
+
+
+@pytest.mark.asyncio
+async def test_autorecord_off_by_default(engagement_workspace, monkeypatch):
+    """No KALIMCP_AUTORECORD=1 → tool calls do NOT mirror into the workspace."""
+    monkeypatch.delenv("KALIMCP_AUTORECORD", raising=False)
+    engagement_workspace.create("op_default", scope=[])
+    engagement_workspace.use("op_default")
+
+    @active_tool("test-recorder")
+    async def stub(target: str, **kwargs):
+        return {
+            "exit_code": 0,
+            "argv": ["fake", target],
+            "parsed": {
+                "credentials_found": [
+                    {"host": target, "service": "ssh",
+                     "username": "alice", "password": "hunter2"},
+                ],
+            },
+        }
+
+    await stub(target="10.0.0.5")
+    creds = engagement_workspace.query_creds()
+    assert creds == [], "auto-record should be OFF by default"
+
+
+@pytest.mark.asyncio
+async def test_autorecord_writes_findings_when_enabled(engagement_workspace, monkeypatch):
+    monkeypatch.setenv("KALIMCP_AUTORECORD", "1")
+    engagement_workspace.create("op_record", scope=[])
+    engagement_workspace.use("op_record")
+
+    @active_tool("test-nmap")
+    async def stub(target: str, **kwargs):
+        return {
+            "exit_code": 0,
+            "argv": ["nmap", target],
+            "parsed": {
+                "hosts": [
+                    {"addr": target, "state": "up",
+                     "ports": [{"portid": 22, "service": "ssh"}]},
+                ],
+            },
+        }
+
+    await stub(target="10.0.0.5")
+    findings = engagement_workspace.query_findings(category="host")
+    assert len(findings) == 1
+    assert findings[0]["host"] == "10.0.0.5"
+    assert findings[0]["source_tool"] == "test-nmap"
+
+
+@pytest.mark.asyncio
+async def test_autorecord_writes_creds_when_enabled(engagement_workspace, monkeypatch):
+    monkeypatch.setenv("KALIMCP_AUTORECORD", "1")
+    engagement_workspace.create("op_creds", scope=[])
+    engagement_workspace.use("op_creds")
+
+    @active_tool("test-hydra")
+    async def stub(target: str, **kwargs):
+        return {
+            "exit_code": 0,
+            "argv": ["hydra", target, "ssh"],
+            "parsed": {
+                "credentials_found": [
+                    {"host": target, "service": "ssh",
+                     "username": "alice", "password": "hunter2"},
+                ],
+            },
+        }
+
+    await stub(target="10.0.0.5")
+    creds = engagement_workspace.query_creds()
+    assert len(creds) == 1
+    cred = creds[0]
+    assert cred["user"] == "alice"
+    assert cred["secret"] == "hunter2"
+    assert cred["proto"] == "ssh"
+    assert cred["host"] == "10.0.0.5"
+    assert cred["source_tool"] == "test-hydra"
+
+
+@pytest.mark.asyncio
+async def test_autorecord_handles_netexec_successes_shape(engagement_workspace, monkeypatch):
+    monkeypatch.setenv("KALIMCP_AUTORECORD", "1")
+    engagement_workspace.create("op_ne", scope=[])
+    engagement_workspace.use("op_ne")
+
+    @active_tool("test-netexec")
+    async def stub(target: str, **kwargs):
+        return {
+            "exit_code": 0,
+            "argv": ["netexec", "smb", target],
+            "parsed": {
+                "successes": [
+                    {"host": "10.0.0.10", "proto": "smb",
+                     "user": "admin", "secret": "Password123"},
+                ],
+            },
+        }
+
+    await stub(target="10.0.0.0/24")
+    creds = engagement_workspace.query_creds()
+    assert len(creds) == 1
+    assert creds[0]["host"] == "10.0.0.10"
+    assert creds[0]["proto"] == "smb"
+
+
+@pytest.mark.asyncio
+async def test_out_of_scope_warning_added_to_result(engagement_workspace, monkeypatch):
+    monkeypatch.delenv("KALIMCP_AUTORECORD", raising=False)
+    engagement_workspace.create("op_scope", scope=["10.0.0.0/24"])
+    engagement_workspace.use("op_scope")
+
+    @active_tool("test-scope")
+    async def stub(target: str, **kwargs):
+        return {"exit_code": 0, "argv": ["fake", target]}
+
+    # Target inside scope → no warning.
+    in_scope = await stub(target="10.0.0.5")
+    assert in_scope.get("warning") is None
+    # Target outside scope → warning annotated, BUT call still completes.
+    out_of_scope = await stub(target="8.8.8.8")
+    assert out_of_scope["warning"] == "out_of_scope"
+    assert out_of_scope["exit_code"] == 0
+
+
+@pytest.mark.asyncio
+async def test_out_of_scope_warning_logged_to_audit(
+    engagement_workspace, tmp_path, monkeypatch
+):
+    from kalimcp import audit
+
+    monkeypatch.delenv("KALIMCP_AUTORECORD", raising=False)
+    log_path = tmp_path / "audit.log"
+    monkeypatch.setenv("KALIMCP_LOG_FILE", str(log_path))
+    audit.configure()
+    engagement_workspace.create("op_audit", scope=["10.0.0.0/24"])
+    engagement_workspace.use("op_audit")
+
+    @active_tool("test-scope-audit")
+    async def stub(target: str, **kwargs):
+        return {"exit_code": 0, "argv": ["fake", target]}
+
+    await stub(target="8.8.8.8")
+    import json
+    events = [
+        json.loads(line)
+        for line in log_path.read_text().splitlines()
+        if line.strip()
+    ]
+    warnings = [e for e in events if e.get("event") == "out_of_scope_warning"]
+    assert warnings, "out_of_scope_warning should be in the audit log"
+    assert warnings[-1]["target"] == "8.8.8.8"
+    assert warnings[-1]["engagement"] == "op_audit"
+
+
+@pytest.mark.asyncio
+async def test_empty_scope_does_not_warn(engagement_workspace, monkeypatch):
+    monkeypatch.delenv("KALIMCP_AUTORECORD", raising=False)
+    engagement_workspace.create("op_open", scope=[])
+    engagement_workspace.use("op_open")
+
+    @active_tool("test-open")
+    async def stub(target: str, **kwargs):
+        return {"exit_code": 0, "argv": ["fake", target]}
+
+    # No scope declared → no gate, no warning regardless of target.
+    result = await stub(target="8.8.8.8")
+    assert result.get("warning") is None

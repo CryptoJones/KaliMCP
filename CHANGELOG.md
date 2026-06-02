@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-06-02
+
+### Added — engagement workspace
+
+The agent now has working memory across tool calls. Every
+engagement is a directory under
+``~/.kalimcp/engagements/<name>/``:
+
+    engagement.json     metadata: name, scope, started_at, operator
+    findings.jsonl      append-only structured findings
+    creds.jsonl         credential cache (mode 0600)
+    loot/               extracted blobs (dumped data, ticket files)
+    screenshots/        PNG output (reserved for future screenshot tool)
+    notes.md            operator free-form notes
+
+Active engagement resolves via ``KALIMCP_ENGAGEMENT`` env var,
+then state file at ``~/.kalimcp/active_engagement`` (set by
+``engagement_use``), then ``_default``.
+
+**New ``kalimcp.engagement`` module** with pure I/O helpers:
+``create``, ``list_all``, ``use``, ``status``, ``record_finding``,
+``query_findings``, ``list_hosts``, ``record_cred``,
+``query_creds``, ``write_loot``, ``list_loot``, ``read_loot``,
+``note_append``, ``list_wordlists``, ``scope_matches``. All
+file I/O is best-effort — a write failure returns ``False`` rather
+than raising; the audit log remains the forensic source of truth.
+
+**14 new MCP tools** wired into ``server.py``:
+``engagement_create / engagement_list / engagement_use /
+engagement_status``, ``finding_record / finding_query /
+host_list``, ``cred_record / cred_query``, ``loot_write /
+loot_list / loot_read``, ``note_append``, ``wordlist_list``.
+
+### Added — auto-record + scope-warning hooks
+
+The ``active_tool`` decorator now has two new behaviors, both
+opt-in:
+
+- **Auto-record (`KALIMCP_AUTORECORD=1`)** — after a successful
+  tool call, inspect ``result["parsed"]`` and mirror structured
+  findings / credentials into the active engagement workspace.
+  Currently recognized keys:
+    * ``parsed.hosts`` (nmap) → ``record_finding("host", addr, ...)``
+    * ``parsed.subdomains`` → ``record_finding("subdomain", name, ...)``
+    * ``parsed.injection_points`` (sqlmap) → ``record_finding("sqli", ...)``
+    * ``parsed.secrets`` (secretsdump) → ``record_finding("secret_dump", ...)``
+    * ``parsed.credentials_found`` (hydra/medusa) → ``record_cred(...)``
+    * ``parsed.successes`` (netexec) → ``record_cred(...)``
+    * ``parsed.cracked`` (john/hashcat) → ``record_cred("offline-crack", ...)``
+  Default is OFF so existing test suites + ad-hoc tool calls
+  don't silently mutate workspace state. Failures during
+  auto-record are swallowed — the workspace is a side channel.
+- **Scope warning** — if the active engagement has a non-empty
+  ``scope`` (CIDR / domain glob / URL patterns) and the call's
+  ``target`` doesn't match any pattern, the decorator annotates
+  the result with ``"warning": "out_of_scope"`` and emits a
+  separate ``out_of_scope_warning`` audit event. Does NOT block
+  the call — the operator declared the scope and may legitimately
+  scan outside it. Empty scope or no engagement means no gate.
+
+### Changed
+
+- ``audit.log`` events now include ``out_of_scope_warning`` and
+  ``engagement_create`` / ``engagement_use`` lifecycle events.
+
 ## [0.8.0] — 2026-06-02
 
 ### Added — Windows AD post-exploit

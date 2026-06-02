@@ -21,10 +21,100 @@ declaring scope is the operator's job, not a hard-coded TLD list's.
 from __future__ import annotations
 
 import functools
+import os
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
-from .. import audit, authz
+from .. import audit, authz, engagement
+
+
+def _autorecord_enabled() -> bool:
+    return os.environ.get("KALIMCP_AUTORECORD") == "1"
+
+
+# Mapping from a key in result["parsed"] to a (category, payload_keys)
+# tuple. When the engagement workspace's auto-record is enabled, the
+# decorator iterates this mapping and records each matched item.
+#
+# Each entry's value must contain ``host_key`` (the field in the
+# extracted item that names the target host) and optional ``payload``
+# (extra fields to copy into the finding payload).
+_FINDING_RULES: dict[str, dict[str, Any]] = {
+    # nmap: parsed.hosts -> {addr, state, ports[]}
+    "hosts": {"category": "host", "host_key": "addr",
+              "payload_keys": ["state", "ports", "addrtype"]},
+    # subdomain enum (future): parsed.subdomains -> {name, source}
+    "subdomains": {"category": "subdomain", "host_key": "name",
+                   "payload_keys": ["source"]},
+    # sqlmap: parsed.injection_points -> {parameter, type, confidence}
+    "injection_points": {"category": "sqli", "host_key": None,
+                         "payload_keys": ["parameter", "type", "confidence"]},
+    # impacket secretsdump: parsed.secrets -> {principal, rid,
+    # lmhash, nthash} (also recorded as creds below)
+    "secrets": {"category": "secret_dump", "host_key": "principal",
+                "payload_keys": ["rid", "lmhash", "nthash"]},
+}
+
+# parsed-key -> (proto, user_key, secret_key, host_key) for cred-shaped
+# records.
+_CRED_RULES: dict[str, dict[str, Any]] = {
+    # hydra / medusa: parsed.credentials_found -> {host, service,
+    # username, password}
+    "credentials_found": {"proto_key": "service", "user_key": "username",
+                          "secret_key": "password", "host_key": "host"},
+    # netexec: parsed.successes -> {host, proto, user, secret}
+    "successes": {"proto_key": "proto", "user_key": "user",
+                  "secret_key": "secret", "host_key": "host"},
+    # john / hashcat: parsed.cracked -> {user, password} / {hash, password}
+    "cracked": {"proto_key": None, "user_key": "user",
+                "secret_key": "password", "host_key": None},
+}
+
+
+def _autorecord(tool_name: str, target: str, parsed: dict[str, Any]) -> None:
+    """Mirror tool findings into the active engagement workspace.
+
+    Best-effort: any I/O failure is silently swallowed. The audit
+    log remains ground truth.
+    """
+    for key, rule in _FINDING_RULES.items():
+        items = parsed.get(key) or []
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            host_key = rule.get("host_key")
+            host = (item.get(host_key) if host_key else target) or target
+            payload = {k: item[k] for k in rule.get("payload_keys", []) if k in item}
+            try:
+                engagement.record_finding(
+                    rule["category"], host, payload, source_tool=tool_name,
+                )
+            except Exception:
+                pass
+
+    for key, rule in _CRED_RULES.items():
+        items = parsed.get(key) or []
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            host_key = rule.get("host_key")
+            host = (item.get(host_key) if host_key else target) or target
+            user = item.get(rule["user_key"])
+            secret = item.get(rule["secret_key"])
+            if not user or not secret:
+                continue
+            proto_key = rule.get("proto_key")
+            proto = (item.get(proto_key) if proto_key else "") or ""
+            try:
+                engagement.record_cred(
+                    host, proto, str(user), str(secret), source_tool=tool_name,
+                )
+            except Exception:
+                pass
 
 
 def active_tool(
@@ -104,6 +194,29 @@ def active_tool(
                 timed_out=result.get("timed_out", False),
                 truncated=result.get("truncated", False),
             )
+
+            # Non-blocking scope warning. If the active engagement
+            # has a scope and `target` doesn't match any pattern, we
+            # annotate the result and emit a separate audit event.
+            # We do NOT block — operator declared scope, operator
+            # also has reason to scan outside it occasionally.
+            try:
+                if not engagement.scope_matches(target):
+                    result = {**result, "warning": "out_of_scope"}
+                    audit.log(
+                        "out_of_scope_warning",
+                        tool=tool_name,
+                        target=target,
+                        engagement=engagement.current_engagement(),
+                    )
+            except Exception:
+                pass
+
+            if _autorecord_enabled():
+                parsed = result.get("parsed") or {}
+                if isinstance(parsed, dict):
+                    _autorecord(tool_name, target, parsed)
+
             return {"ok": True, **result}
 
         return inner
