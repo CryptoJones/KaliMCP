@@ -38,6 +38,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         openssl \
         hydra \
         sqlmap \
+        ffuf \
+        whatweb \
+        enum4linux-ng \
+        snmp \
+        ldap-utils \
         wordlists seclists \
         ca-certificates \
         && apt-get clean \

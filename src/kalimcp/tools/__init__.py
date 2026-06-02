@@ -3,11 +3,37 @@
 """Tool wrappers exposed as MCP tool functions.
 
 Each module here exposes an ``async`` entry point that the server
-registers as an MCP tool. Active-scan modules import and use
-``kalimcp.tools._active.active_tool`` for audit logging; passive
-modules use the lighter-weight wrapper in ``passive``.
+registers as an MCP tool. Active-scan modules use the
+``kalimcp.tools._active.active_tool`` decorator for audit logging;
+passive modules use the lighter-weight wrapper in ``passive``.
 """
 
-from . import gobuster, hydra, nikto, nmap, passive, sqlmap, sslscan
+from . import (
+    ffuf,
+    gobuster,
+    hydra,
+    ldap,
+    nikto,
+    nmap,
+    passive,
+    smb,
+    snmp,
+    sqlmap,
+    sslscan,
+    whatweb,
+)
 
-__all__ = ["gobuster", "hydra", "nikto", "nmap", "passive", "sqlmap", "sslscan"]
+__all__ = [
+    "ffuf",
+    "gobuster",
+    "hydra",
+    "ldap",
+    "nikto",
+    "nmap",
+    "passive",
+    "smb",
+    "snmp",
+    "sqlmap",
+    "sslscan",
+    "whatweb",
+]

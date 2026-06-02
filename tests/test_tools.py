@@ -17,7 +17,20 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from kalimcp.tools import gobuster, hydra, nikto, nmap, passive, sqlmap, sslscan
+from kalimcp.tools import (
+    ffuf,
+    gobuster,
+    hydra,
+    ldap,
+    nikto,
+    nmap,
+    passive,
+    smb,
+    snmp,
+    sqlmap,
+    sslscan,
+    whatweb,
+)
 
 
 def _fake_result(stdout: str = "ok") -> dict:
@@ -771,3 +784,374 @@ async def test_hydra_timeout_passed_through():
     with patch("kalimcp.tools.hydra.run.run", new=AsyncMock(return_value=_fake_result())) as m:
         await hydra.crack(target="192.168.1.10", service="ssh", timeout_seconds=42)
     assert m.call_args.kwargs.get("timeout") == 42
+
+
+# ---------- ffuf ----------
+
+_FFUF_JSON_SAMPLE = """{
+  "commandline": "ffuf -w /usr/share/wordlists/dirb/common.txt -t 40 -of json -o /dev/stdout -s -u https://example.com/FUZZ",
+  "time": "2026-06-02T12:00:00Z",
+  "results": [
+    {
+      "input": {"FUZZ": "admin"},
+      "position": 1,
+      "status": 301,
+      "length": 234,
+      "words": 25,
+      "lines": 12,
+      "content-type": "text/html",
+      "redirectlocation": "https://example.com/admin/",
+      "url": "https://example.com/admin",
+      "host": "example.com"
+    },
+    {
+      "input": {"FUZZ": "api"},
+      "position": 2,
+      "status": 200,
+      "length": 4596,
+      "words": 800,
+      "lines": 150,
+      "content-type": "application/json",
+      "redirectlocation": "",
+      "url": "https://example.com/api",
+      "host": "example.com"
+    }
+  ]
+}"""
+
+
+@pytest.mark.asyncio
+async def test_ffuf_dir_argv_shape():
+    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+         patch("kalimcp.tools.ffuf.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await ffuf.fuzz(target="https://example.com/FUZZ", wordlist="/wl.txt")
+    argv = m.call_args.args[0]
+    assert argv[0] == "ffuf"
+    assert "-w" in argv and argv[argv.index("-w") + 1] == "/wl.txt"
+    assert "-of" in argv and argv[argv.index("-of") + 1] == "json"
+    assert "-u" in argv and argv[argv.index("-u") + 1] == "https://example.com/FUZZ"
+    # -s suppresses progress so json stdout stays clean.
+    assert "-s" in argv
+
+
+@pytest.mark.asyncio
+async def test_ffuf_vhost_mode_uses_host_header():
+    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+         patch("kalimcp.tools.ffuf.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await ffuf.fuzz(
+            target="https://example.com/",
+            mode="vhost",
+            wordlist="/wl.txt",
+            vhost_template="FUZZ.example.com",
+        )
+    argv = m.call_args.args[0]
+    assert "-H" in argv
+    assert argv[argv.index("-H") + 1] == "Host: FUZZ.example.com"
+
+
+@pytest.mark.asyncio
+async def test_ffuf_threads_clamped():
+    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+         patch("kalimcp.tools.ffuf.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await ffuf.fuzz(target="https://example.com/FUZZ", wordlist="/wl.txt", threads=9999)
+    argv = m.call_args.args[0]
+    assert argv[argv.index("-t") + 1] == "200"
+
+
+@pytest.mark.asyncio
+async def test_ffuf_unknown_mode_returns_error_without_running():
+    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+         patch("kalimcp.tools.ffuf.run.run", new=AsyncMock()) as m:
+        result = await ffuf.fuzz(target="https://example.com/FUZZ", mode="bogus", wordlist="/wl.txt")
+    m.assert_not_called()
+    assert result["exit_code"] == -1
+    assert result["parsed"] == {"results": []}
+
+
+@pytest.mark.asyncio
+async def test_ffuf_no_wordlist_returns_error_with_parsed():
+    with patch("kalimcp.tools.ffuf._default_wordlist", return_value=None), \
+         patch("kalimcp.tools.ffuf.run.run", new=AsyncMock()):
+        result = await ffuf.fuzz(target="https://example.com/FUZZ")
+    assert result["exit_code"] == -1
+    assert result["parsed"] == {"results": []}
+
+
+@pytest.mark.asyncio
+async def test_ffuf_parsed_field_populated_on_success():
+    fake = _fake_result(stdout=_FFUF_JSON_SAMPLE)
+    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+         patch("kalimcp.tools.ffuf.run.run", new=AsyncMock(return_value=fake)):
+        result = await ffuf.fuzz(target="https://example.com/FUZZ", wordlist="/wl.txt")
+    parsed = result["parsed"]
+    assert len(parsed["results"]) == 2
+    by_url = {r["url"]: r for r in parsed["results"]}
+    admin = by_url["https://example.com/admin"]
+    assert admin["status"] == 301
+    assert admin["length"] == 234
+    assert admin["redirect"] == "https://example.com/admin/"
+    assert admin["content_type"] == "text/html"
+    assert admin["input"] == {"FUZZ": "admin"}
+
+
+@pytest.mark.asyncio
+async def test_ffuf_parsed_field_empty_on_malformed_json():
+    fake = _fake_result(stdout="not actually json")
+    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+         patch("kalimcp.tools.ffuf.run.run", new=AsyncMock(return_value=fake)):
+        result = await ffuf.fuzz(target="https://example.com/FUZZ", wordlist="/wl.txt")
+    assert result["parsed"] == {"results": []}
+
+
+# ---------- whatweb ----------
+
+_WHATWEB_JSON_SAMPLE = """{"target":"https://example.com/","http_status":200,"plugins":{"HTTPServer":[{"string":"Apache/2.4.41 (Ubuntu)"}],"WordPress":[{"version":"6.2.1"}],"X-Frame-Options":[{"string":"SAMEORIGIN"}],"Country":[{"string":"UNITED STATES","module":"US"}]}}"""
+
+
+@pytest.mark.asyncio
+async def test_whatweb_argv_shape():
+    with patch("kalimcp.tools.whatweb.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await whatweb.fingerprint(target="https://example.com/")
+    argv = m.call_args.args[0]
+    assert argv[0] == "whatweb"
+    assert "--log-json=-" in argv
+    assert "--aggression=1" in argv
+    assert argv[-1] == "https://example.com/"
+
+
+@pytest.mark.asyncio
+async def test_whatweb_aggression_clamped():
+    with patch("kalimcp.tools.whatweb.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await whatweb.fingerprint(target="https://example.com/", aggression=99)
+    argv = m.call_args.args[0]
+    assert "--aggression=4" in argv
+
+
+@pytest.mark.asyncio
+async def test_whatweb_parsed_field_populated_on_success():
+    fake = _fake_result(stdout=_WHATWEB_JSON_SAMPLE)
+    with patch("kalimcp.tools.whatweb.run.run", new=AsyncMock(return_value=fake)):
+        result = await whatweb.fingerprint(target="https://example.com/")
+    parsed = result["parsed"]
+    assert parsed["target"] == "https://example.com/"
+    assert parsed["http_status"] == 200
+    assert parsed["server"] == "Apache/2.4.41 (Ubuntu)"
+    assert parsed["detected_cms"] == "WordPress"
+    plugin_names = [p["name"] for p in parsed["plugins"]]
+    assert "HTTPServer" in plugin_names
+    assert "WordPress" in plugin_names
+    wp = next(p for p in parsed["plugins"] if p["name"] == "WordPress")
+    assert wp["version"] == "6.2.1"
+
+
+@pytest.mark.asyncio
+async def test_whatweb_parsed_field_empty_on_malformed_json():
+    fake = _fake_result(stdout="not json")
+    with patch("kalimcp.tools.whatweb.run.run", new=AsyncMock(return_value=fake)):
+        result = await whatweb.fingerprint(target="https://example.com/")
+    assert result["parsed"] == {
+        "target": "",
+        "http_status": None,
+        "server": "",
+        "detected_cms": "",
+        "plugins": [],
+    }
+
+
+# ---------- smb_enum ----------
+
+_SMB_JSON_SAMPLE = """{
+  "target": "192.168.1.10",
+  "os_info": {
+    "native_os": "Windows 10 Pro",
+    "native_lan_manager": "Windows 10 Pro 6.3",
+    "server_type": "Workstation, Server, Domain Member"
+  },
+  "smb_dialects": {
+    "Signing enabled": false
+  },
+  "sessions": {
+    "sessions_possible": true
+  },
+  "shares": {
+    "ADMIN$": {"type": "Disk", "comment": "Remote Admin", "access": "DENIED"},
+    "C$": {"type": "Disk", "comment": "Default share", "access": "DENIED"},
+    "IPC$": {"type": "IPC", "comment": "Remote IPC", "access": "OK"},
+    "share": {"type": "Disk", "comment": "Public", "access": "OK"}
+  },
+  "users": {
+    "1000": {"username": "alice", "name": "Alice Anderson"},
+    "1001": {"username": "bob", "name": "Bob Brown"}
+  },
+  "groups": {
+    "513": {"groupname": "Domain Users"}
+  },
+  "domain_info": {
+    "NetBIOS domain name": "CORP",
+    "DNS domain": "corp.local"
+  }
+}"""
+
+
+@pytest.mark.asyncio
+async def test_smb_argv_shape(tmp_path):
+    with patch("kalimcp.tools.smb.tempfile.NamedTemporaryFile") as mock_tmp, \
+         patch("kalimcp.tools.smb.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        tmp_file = tmp_path / "out.json"
+        tmp_file.write_text("")
+        mock_tmp.return_value.name = str(tmp_file)
+        mock_tmp.return_value.close = lambda: None
+        await smb.enumerate(target="192.168.1.10")
+    argv = m.call_args.args[0]
+    assert argv[:2] == ["enum4linux-ng", "-A"]
+    assert "-oJ" in argv
+    assert argv[-1] == "192.168.1.10"
+
+
+@pytest.mark.asyncio
+async def test_smb_parsed_field_populated_on_success(tmp_path):
+    json_file = tmp_path / "out.json"
+    json_file.write_text(_SMB_JSON_SAMPLE)
+    with patch("kalimcp.tools.smb.tempfile.NamedTemporaryFile") as mock_tmp, \
+         patch("kalimcp.tools.smb.run.run", new=AsyncMock(return_value=_fake_result())):
+        mock_tmp.return_value.name = str(json_file)
+        mock_tmp.return_value.close = lambda: None
+        result = await smb.enumerate(target="192.168.1.10")
+    parsed = result["parsed"]
+    assert parsed["target"] == "192.168.1.10"
+    assert parsed["null_session"] is True
+    assert parsed["signing"] == "false"
+    assert parsed["os"]["native_os"] == "Windows 10 Pro"
+    share_names = {s["name"] for s in parsed["shares"]}
+    assert {"ADMIN$", "C$", "IPC$", "share"}.issubset(share_names)
+    usernames = {u["username"] for u in parsed["users"] if "username" in u}
+    assert usernames == {"alice", "bob"}
+    assert parsed["domain"] == "CORP"
+
+
+# ---------- snmp_enum ----------
+
+_SNMP_OUTPUT_SAMPLE = """snmp-check v1.9 - SNMP enumerator
+
+[+] Try to connect to 192.168.1.50:161 using SNMPv2c and community 'public'
+
+[*] System information:
+
+  Hostname: switch01.corp.local
+  Description: Cisco IOS Software, C2960X Software
+  Contact: noc@corp.local
+  Location: Building 3, Rack A
+  Uptime: 42 days, 11:22:33
+
+[*] Processes:
+
+  PID 1: init
+  PID 2: kthreadd
+  PID 100: snmpd
+
+[*] Software components:
+
+  bash 5.0
+  openssl 1.1.1f
+"""
+
+
+@pytest.mark.asyncio
+async def test_snmp_argv_shape():
+    with patch("kalimcp.tools.snmp.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await snmp.enumerate(target="192.168.1.50")
+    argv = m.call_args.args[0]
+    assert argv[:5] == ["snmp-check", "-c", "public", "-v", "2c"]
+    assert argv[-1] == "192.168.1.50"
+
+
+@pytest.mark.asyncio
+async def test_snmp_custom_community_argv():
+    with patch("kalimcp.tools.snmp.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await snmp.enumerate(target="192.168.1.50", community="private")
+    argv = m.call_args.args[0]
+    assert argv[argv.index("-c") + 1] == "private"
+
+
+@pytest.mark.asyncio
+async def test_snmp_parsed_field_populated_on_success():
+    fake = _fake_result(stdout=_SNMP_OUTPUT_SAMPLE)
+    with patch("kalimcp.tools.snmp.run.run", new=AsyncMock(return_value=fake)):
+        result = await snmp.enumerate(target="192.168.1.50", community="public")
+    parsed = result["parsed"]
+    assert parsed["target"] == "192.168.1.50"
+    assert parsed["community"] == "public"
+    assert parsed["hostname"] == "switch01.corp.local"
+    assert parsed["contact"] == "noc@corp.local"
+    assert parsed["location"] == "Building 3, Rack A"
+    assert "42 days" in parsed["uptime"]
+    assert any("init" in p for p in parsed["processes"])
+    assert any("bash" in s for s in parsed["software"])
+
+
+# ---------- ldap_enum ----------
+
+_LDAP_OUTPUT_SAMPLE = """dn:
+namingContexts: DC=corp,DC=local
+namingContexts: CN=Configuration,DC=corp,DC=local
+namingContexts: CN=Schema,CN=Configuration,DC=corp,DC=local
+defaultNamingContext: DC=corp,DC=local
+schemaNamingContext: CN=Schema,CN=Configuration,DC=corp,DC=local
+configurationNamingContext: CN=Configuration,DC=corp,DC=local
+supportedControl: 1.2.840.113556.1.4.319
+supportedControl: 1.2.840.113556.1.4.801
+supportedSASLMechanisms: GSSAPI
+supportedSASLMechanisms: GSS-SPNEGO
+supportedLDAPVersion: 3
+supportedLDAPVersion: 2
+vendorName: Microsoft Corporation
+domainFunctionality: 7
+"""
+
+
+@pytest.mark.asyncio
+async def test_ldap_default_argv():
+    with patch("kalimcp.tools.ldap.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await ldap.enumerate(target="dc.corp.local")
+    argv = m.call_args.args[0]
+    assert argv[0] == "ldapsearch"
+    assert "-x" in argv
+    assert "-H" in argv and argv[argv.index("-H") + 1] == "ldap://dc.corp.local:389"
+    assert "-s" in argv and argv[argv.index("-s") + 1] == "base"
+
+
+@pytest.mark.asyncio
+async def test_ldap_port_636_uses_ldaps_scheme():
+    with patch("kalimcp.tools.ldap.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await ldap.enumerate(target="dc.corp.local", port=636)
+    argv = m.call_args.args[0]
+    assert argv[argv.index("-H") + 1] == "ldaps://dc.corp.local:636"
+
+
+@pytest.mark.asyncio
+async def test_ldap_parsed_field_populated_on_success():
+    fake = _fake_result(stdout=_LDAP_OUTPUT_SAMPLE)
+    with patch("kalimcp.tools.ldap.run.run", new=AsyncMock(return_value=fake)):
+        result = await ldap.enumerate(target="dc.corp.local")
+    parsed = result["parsed"]
+    assert parsed["host"] == "dc.corp.local"
+    assert parsed["port"] == 389
+    assert "DC=corp,DC=local" in parsed["naming_contexts"]
+    assert parsed["default_naming_context"] == "DC=corp,DC=local"
+    assert parsed["schema_dn"].startswith("CN=Schema")
+    assert "1.2.840.113556.1.4.319" in parsed["supported_controls"]
+    assert "GSSAPI" in parsed["supported_sasl_mechanisms"]
+    assert "3" in parsed["supported_ldap_versions"]
+    assert parsed["vendor"] == "Microsoft Corporation"
+
+
+@pytest.mark.asyncio
+async def test_ldap_parsed_field_empty_when_stdout_blank():
+    fake = _fake_result(stdout="")
+    with patch("kalimcp.tools.ldap.run.run", new=AsyncMock(return_value=fake)):
+        result = await ldap.enumerate(target="dc.corp.local")
+    # host/port still populated from input even on empty output.
+    parsed = result["parsed"]
+    assert parsed["host"] == "dc.corp.local"
+    assert parsed["port"] == 389
+    assert parsed["naming_contexts"] == []

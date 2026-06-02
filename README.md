@@ -54,12 +54,31 @@ clients):
 
 | Tool | Wraps | Purpose |
 |------|-------|---------|
+**Recon / scanning**
+
+| Tool | Wraps | Purpose |
+|------|-------|---------|
 | `nmap_scan` | `nmap` | port + service scan (5 named profiles); structured `parsed` JSON |
 | `nikto_scan` | `nikto` | web-server vulnerability scan; structured `parsed` JSON |
 | `gobuster_dir` | `gobuster` | directory / file enumeration; structured `parsed` JSON |
+| `ffuf_fuzz` | `ffuf` | flexible web fuzzing (dir / vhost / param / ext modes) |
+| `whatweb_fingerprint` | `whatweb` | HTTP / CMS / framework fingerprinting |
 | `sslscan_scan` | `sslscan` | TLS / SSL cipher + cert enumeration; structured `parsed` JSON |
+| `smb_enum` | `enum4linux-ng` | SMB shares / users / groups / OS / signing |
+| `snmp_enum` | `snmp-check` | SNMP enumeration (hostname / contact / processes / software) |
+| `ldap_enum` | `ldapsearch` | anonymous LDAP rootDSE query (naming contexts / vendor) |
+
+**Auth & SQLi**
+
+| Tool | Wraps | Purpose |
+|------|-------|---------|
 | `hydra_crack` | `hydra` | network logon brute-force (ssh/ftp/smb/http-…); 4 profiles |
 | `sqlmap_scan` | `sqlmap` | automated SQL injection detection + exploitation; 4 profiles |
+
+**Passive lookups**
+
+| Tool | Wraps | Purpose |
+|------|-------|---------|
 | `whois_lookup` | `whois` | domain / IP registration info |
 | `dig_record` | `dig` | DNS record lookup |
 | `searchsploit_search` | `searchsploit` | local Exploit-DB grep |
@@ -181,7 +200,8 @@ post-exploit-phase roadmap.
 | v0.3 | structured nmap XML output → JSON; `kalimcp-authz` CLI dropped | shipped |
 | v0.4 | `hydra_crack` + `sqlmap_scan` wired in; refuse list removed (audit log remains the accountability channel) | shipped |
 | v0.5 | structured `parsed` JSON for `nikto_scan`, `sslscan_scan`, `gobuster_dir` | shipped |
-| v0.6 | recon expansion: subdomain_enum (amass/subfinder), whatweb, ffuf, feroxbuster, smb/snmp/ldap enum, web_screenshot, kerbrute | planned |
+| v0.6 | recon expansion: ffuf, whatweb, smb/snmp/ldap enum | shipped |
+| (later) | Go-binary recon tools (subfinder, feroxbuster, gowitness, kerbrute) — need curl-install layers in Dockerfile | planned |
 | v0.7 | credential operations: netexec, medusa, john, hashcat, responder; argv-secret redaction in audit log | planned |
 | v0.8 | post-exploit (Windows AD): impacket suite, evil-winrm, msfvenom payload generation | planned |
 | v0.9 | engagement workspace (`~/.kalimcp/engagements/<name>/`) — findings + creds + loot + screenshots + scope-warning audit | planned |

@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-06-02
+
+### Added — recon expansion
+
+Five new active-scan MCP tools, each following the existing
+``@active_tool`` + structured-``parsed`` pattern:
+
+- **`ffuf_fuzz`** — fast web fuzzer (gobuster's flexible cousin).
+  Modes: ``dir`` (URL path), ``vhost`` (Host header), ``param``
+  (GET/POST parameter name), ``ext`` (file extension). Parsed from
+  ``-of json -o /dev/stdout`` into
+  ``{results: [{url, status, length, words, lines, input?,
+  redirect?, content_type?}]}``. Threads capped 1..200.
+- **`whatweb_fingerprint`** — HTTP / tech-stack fingerprint via
+  ``whatweb --log-json=-``. Parsed into
+  ``{target, http_status, server, detected_cms, plugins:
+  [{name, version?, string?, ...}]}``. Aggression 1 (passive) to 4
+  (heavy intrusive) — clamped to that range.
+- **`smb_enum`** — SMB / Windows enumeration via ``enum4linux-ng
+  -A -oJ``. Parsed into ``{target, os, signing, null_session,
+  shares, users, groups, domain}``. Reads JSON output from a
+  tempfile and surfaces it in ``stdout`` so operators can re-parse.
+- **`snmp_enum`** — SNMP enumeration via ``snmp-check -c <community>
+  -v 2c``. Default community ``public``. Parsed into
+  ``{target, community, hostname, contact, location, uptime,
+  description, processes, software, services}``.
+- **`ldap_enum`** — Anonymous LDAP / Active Directory rootDSE query
+  via ``ldapsearch -x -s base``. Port 636 → ``ldaps://`` scheme.
+  Parsed into ``{host, port, naming_contexts,
+  default_naming_context, schema_dn, configuration_dn,
+  supported_controls, supported_sasl_mechanisms,
+  supported_ldap_versions, vendor, domain_functionality}``.
+- New per-tool argv + parser tests in ``tests/test_tools.py``.
+  ``tests/test_server.py:EXPECTED_TOOLS`` extended; all five new
+  tools verified registered + free of the legacy
+  ``authorization_token`` parameter.
+
+### Changed
+
+- ``Dockerfile`` adds ``ffuf whatweb enum4linux-ng snmp ldap-utils``
+  to the apt install list.
+- ``README.md`` tool table expanded; Status table v0.6 marked
+  shipped. Go-binary tools (subfinder, feroxbuster, gowitness,
+  kerbrute) are deliberately out of scope for this release — they
+  require curl-install layers or a Go builder stage in the
+  Dockerfile and will land in a follow-up phase.
+
 ## [0.5.0] — 2026-06-02
 
 ### Added

@@ -36,7 +36,20 @@ import sys
 from mcp.server.fastmcp import FastMCP
 
 from . import audit
-from .tools import gobuster, hydra, nikto, nmap, passive, sqlmap, sslscan
+from .tools import (
+    ffuf,
+    gobuster,
+    hydra,
+    ldap,
+    nikto,
+    nmap,
+    passive,
+    smb,
+    snmp,
+    sqlmap,
+    sslscan,
+    whatweb,
+)
 
 mcp = FastMCP("kalimcp")
 
@@ -151,6 +164,89 @@ async def sqlmap_scan(
     return await sqlmap.scan(
         target=target,
         profile=profile,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def ffuf_fuzz(
+    target: str,
+    mode: str = "dir",
+    wordlist: str | None = None,
+    vhost_template: str | None = None,
+    threads: int = 40,
+    timeout_seconds: int = 600,
+) -> dict:
+    """Fast web fuzzer (ffuf). Substitutes wordlist entries into FUZZ.
+
+    Modes: `dir` (URL path; pass `https://host/FUZZ`), `vhost`
+    (Host header; pass base URL + `vhost_template` like
+    `"FUZZ.example.com"`), `param` (pass `https://host/?FUZZ=test`),
+    `ext` (file extension fuzzing). More flexible than gobuster.
+    """
+    return await ffuf.fuzz(
+        target=target,
+        mode=mode,
+        wordlist=wordlist,
+        vhost_template=vhost_template,
+        threads=threads,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def whatweb_fingerprint(
+    target: str,
+    aggression: int = 1,
+    timeout_seconds: int = 120,
+) -> dict:
+    """HTTP / web-app fingerprint of a URL via whatweb.
+
+    Identifies the server, CMS (WordPress / Drupal / Joomla / …),
+    JS frameworks, analytics trackers. `aggression` 1 (passive) to
+    4 (heavy intrusive probes).
+    """
+    return await whatweb.fingerprint(
+        target=target,
+        aggression=aggression,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def smb_enum(target: str, timeout_seconds: int = 300) -> dict:
+    """SMB enumeration via enum4linux-ng.
+
+    Pulls shares, users, groups, OS info, signing status, and
+    null-session ability from a Windows / Samba target.
+    """
+    return await smb.enumerate(target=target, timeout_seconds=timeout_seconds)
+
+
+@mcp.tool()
+async def snmp_enum(
+    target: str,
+    community: str = "public",
+    timeout_seconds: int = 180,
+) -> dict:
+    """SNMP enumeration via snmp-check. Default community is `public`."""
+    return await snmp.enumerate(
+        target=target,
+        community=community,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def ldap_enum(
+    target: str,
+    port: int = 389,
+    timeout_seconds: int = 60,
+) -> dict:
+    """Anonymous LDAP / AD rootDSE query via ldapsearch. Port 636 for LDAPS."""
+    return await ldap.enumerate(
+        target=target,
+        port=port,
         timeout_seconds=timeout_seconds,
     )
 
