@@ -58,8 +58,6 @@ Exposes the following [MCP](https://modelcontextprotocol.io/) tools to
 any compliant client (Claude Code, Claude Desktop, future MCP-aware
 clients):
 
-| Tool | Wraps | Purpose |
-|------|-------|---------|
 **Recon / scanning**
 
 | Tool | Wraps | Purpose |
@@ -135,9 +133,17 @@ cd KaliMCP
 docker build -t kalimcp .
 ```
 
-The image pulls from `kalilinux/kali-rolling` and installs nmap,
-nikto, gobuster, whois, dnsutils, exploitdb, sslscan, openssl,
-wordlists, and seclists alongside the Python package.
+The image pulls from `kalilinux/kali-rolling` and installs the full
+wrapped tool set alongside the Python package:
+
+- **recon / web**: nmap, nikto, gobuster, sslscan, ffuf, whatweb,
+  enum4linux-ng, snmp, ldap-utils
+- **auth / credentials**: hydra, sqlmap, netexec, medusa, john,
+  hashcat
+- **Windows AD post-exploit**: impacket-scripts, metasploit-framework
+  (only `msfvenom` is wired — see below)
+- **passive**: whois, dnsutils, exploitdb, openssl
+- **wordlists**: wordlists, seclists
 
 ### Bare metal (Kali Linux only — needs the tools installed already)
 
@@ -212,23 +218,28 @@ affect tool execution. `KALIMCP_NO_LOG=1` disables it entirely
 
 ---
 
-## What's NOT here (yet)
+## What's NOT here
 
-KaliMCP is on a multi-release red-team kit overhaul. The current
-release covers reconnaissance, web-vuln, and the first wave of
-auth + SQLi tooling (hydra, sqlmap). Planned in subsequent
-releases: structured JSON output for `nikto`/`gobuster`/`sslscan`,
-subdomain enumeration (amass/subfinder), web fuzzing (ffuf),
-HTTP fingerprinting (whatweb), credential spraying (netexec),
-Kerberos pre-auth enum (kerbrute), AD post-exploit (impacket
-suite, evil-winrm), and an engagement workspace so the agent has
-working memory across calls. See the Status table below.
+The v0.4 → v0.9 red-team overhaul is shipped: recon, web-vuln,
+auth/credential, Windows AD post-exploit, and the engagement
+workspace are all live (see the Status table). What's
+deliberately left out:
 
-Out of scope: the Metasploit framework's exploit modules and the
-`msfconsole` driver. `msfvenom_payload` ships in v0.8 — payload
-generation only, with output written to disk (operators retrieve
-the binary themselves) so the MCP server never serves executable
-bytes inline.
+- **Go-binary recon tools not in the Kali apt repos** — subfinder,
+  amass, feroxbuster, gowitness, kerbrute. These need curl-install
+  layers or a Go builder stage in the Dockerfile; deferred to a
+  follow-up phase. The `screenshots/` dir in each engagement is
+  reserved for a future `gowitness`-backed screenshot tool.
+- **evil-winrm's interactive shell** — `winrm_exec` covers
+  single-shot PowerShell over WinRM (`netexec winrm -X`); there's
+  no persistent interactive session.
+- **The Metasploit framework's exploit modules and the
+  `msfconsole` driver.** The `metasploit-framework` package is
+  installed only to provide `msfvenom`. `msfvenom_payload` is
+  payload generation only — output is written to disk under
+  `~/.kalimcp/payloads/` (operators retrieve the binary
+  themselves) so the MCP server never serves executable bytes
+  inline.
 
 ---
 
@@ -246,9 +257,6 @@ bytes inline.
 | v0.8 | Windows AD post-exploit: impacket suite (NPUsers/UserSPNs/secretsdump/smbclient), winrm_exec, msfvenom payload generation | shipped |
 | v0.9 | engagement workspace (`~/.kalimcp/engagements/<name>/`) — findings/creds/loot/screenshots + scope-warning audit + auto-record hook | shipped |
 | (later) | Go-binary recon tools (subfinder, feroxbuster, gowitness, kerbrute) — need curl-install layers in Dockerfile | planned |
-| v0.7 | credential operations: netexec, medusa, john, hashcat, responder; argv-secret redaction in audit log | planned |
-| v0.8 | post-exploit (Windows AD): impacket suite, evil-winrm, msfvenom payload generation | planned |
-| v0.9 | engagement workspace (`~/.kalimcp/engagements/<name>/`) — findings + creds + loot + screenshots + scope-warning audit | planned |
 
 See [CHANGELOG.md](CHANGELOG.md) for the per-release detail.
 
