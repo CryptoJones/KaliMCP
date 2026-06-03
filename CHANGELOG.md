@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed — dead code
+
+- **`src/kalimcp/authz.py` deleted.** The module was entirely legacy:
+  `is_refused()` had been a no-op stub returning `None` since the
+  refuse list was dropped in v0.4 (`2143fdd`), and the `Authorization`
+  dataclass / `check()` / load-save helpers were unwired remnants of
+  the v0.1 `authorization_token` requirement (removed in `cc66cf8`).
+  The unreachable refuse-list branch and `authz` import are gone from
+  `tools/_active.py`; `tests/test_authz.py` and the four obsolete
+  refuse-path cases in `tests/test_active.py` are deleted. No
+  observable behavior changes — the refuse list had been inert for
+  five releases.
+
+### Added — project files
+
+- `CLAUDE.md` — architecture guide for AI agents working in the repo.
+- `CONTRIBUTING.md` — dev setup, the tool-wrapper checklist, dual-mirror
+  workflow, commit conventions.
+- `SECURITY.md` — authorized-use responsibility + how to report a flaw
+  in the server code itself.
+- `.dockerignore` — keeps `.git`, `.venv`, tests, and caches out of the
+  build context.
+
+### Added — CI
+
+- **hadolint Dockerfile lint** in both Woodpecker and GitHub Actions,
+  configured via `.hadolint.yaml` (`failure-threshold: error`; the
+  version-pinning rules are ignored because the base is rolling). A
+  full image build stays out of CI — the Kali + metasploit image is too
+  heavy to build per-push.
+
+### Changed
+
+- `test_mcp_client.py` moved to `scripts/smoke_client.py` and renamed so
+  pytest never tries to collect the manual smoke client; its stale
+  refuse-list docstring is corrected.
+- Scrubbed the unpublished `ghcr.io/cryptojones/kalimcp:latest` image
+  reference from the `server.py` Docker example — it now matches the
+  README's local `docker build -t kalimcp .` flow.
+- Refreshed audit/passive/decorator docstrings and comments that still
+  described the removed refuse list; dropped the producerless
+  `subdomains` auto-record rule and the dangling `web_screenshot`
+  reference in the engagement docstring.
+
 ## [0.9.0] — 2026-06-02
 
 ### Added — engagement workspace

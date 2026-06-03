@@ -3,19 +3,15 @@
 """Shared decorator for active-scan tools.
 
 Provides ``active_tool`` — wraps a coroutine that hits a target
-over the network. The decorator:
-
-  1. Calls ``authz.is_refused(target)``. As of 2143fdd the refuse
-     list is intentionally a no-op (``is_refused`` always returns
-     ``None``); the call site remains so a future operator can
-     re-enable refuse patterns from one place without re-plumbing
-     every wrapper. ``KALIMCP_ALLOW_REFUSED=1`` is still honored.
-  2. Times the call and appends a single ``tool_invoke`` audit-log
-     line on completion (or ``tool_exception`` on failure).
+over the network. The decorator times the call and appends a single
+``tool_invoke`` audit-log line on completion (or ``tool_exception``
+on failure).
 
 The audit log at ``/var/log/kalimcp.log`` is the operator-
-accountability mechanism; the refuse list was removed because
-declaring scope is the operator's job, not a hard-coded TLD list's.
+accountability mechanism. There is no hard-coded refuse list:
+declaring scope is the operator's job. An active engagement with a
+``scope`` list gets a non-blocking ``out_of_scope`` warning per
+out-of-scope target (see ``engagement.scope_matches``).
 """
 
 from __future__ import annotations
@@ -25,7 +21,7 @@ import os
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
-from .. import audit, authz, engagement
+from .. import audit, engagement
 
 
 def _autorecord_enabled() -> bool:
@@ -43,9 +39,6 @@ _FINDING_RULES: dict[str, dict[str, Any]] = {
     # nmap: parsed.hosts -> {addr, state, ports[]}
     "hosts": {"category": "host", "host_key": "addr",
               "payload_keys": ["state", "ports", "addrtype"]},
-    # subdomain enum (future): parsed.subdomains -> {name, source}
-    "subdomains": {"category": "subdomain", "host_key": "name",
-                   "payload_keys": ["source"]},
     # sqlmap: parsed.injection_points -> {parameter, type, confidence}
     "injection_points": {"category": "sqli", "host_key": None,
                          "payload_keys": ["parameter", "type", "confidence"]},
@@ -122,7 +115,7 @@ def active_tool(
     *,
     secret_flags: Iterable[str] | None = None,
 ):
-    """Decorator: refuse-list guard + audit log around a tool call.
+    """Decorator: audit log + scope warning around a tool call.
 
     The decorated coroutine must accept ``target`` as a keyword
     argument.
@@ -140,22 +133,6 @@ def active_tool(
     def wrap(fn: Callable[..., Awaitable[dict[str, Any]]]):
         @functools.wraps(fn)
         async def inner(target: str, **kwargs) -> dict[str, Any]:
-            # Refuse-list short-circuit. Honors KALIMCP_ALLOW_REFUSED=1
-            # for operators who genuinely need to scan a refused target.
-            refusal = authz.is_refused(target)
-            if refusal:
-                audit.log(
-                    "refused",
-                    tool=tool_name,
-                    target=target,
-                    reason=refusal,
-                )
-                return {
-                    "ok": False,
-                    "error": "refused",
-                    "message": refusal,
-                }
-
             with audit.time_block() as elapsed:
                 try:
                     result = await fn(target=target, **kwargs)

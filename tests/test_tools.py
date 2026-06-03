@@ -6,9 +6,8 @@ These verify the argv each wrapper hands to ``run.run`` — the
 contract is "given these args, the right CLI invocation comes
 out." No real subprocess runs; ``run.run`` is patched.
 
-The active-tool decorator's refuse-list guard is exercised here
-incidentally — every wrapper goes through it. We pass safe
-targets (127.0.0.1, example.com) to avoid the refuse path.
+Every wrapper goes through the active-tool decorator incidentally,
+so these also exercise its audit-log path.
 """
 
 from __future__ import annotations

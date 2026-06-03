@@ -1,0 +1,11 @@
+# hadolint config for the KaliMCP Dockerfile.
+#
+# The image is built FROM kalilinux/kali-rolling — a rolling release.
+# Pinning apt/pip package versions against a rolling base is both
+# impossible to keep current and contrary to the point of the image
+# (track upstream Kali tool updates), so the version-pinning rules are
+# disabled. Only error-level findings fail CI; warnings are advisory.
+failure-threshold: error
+ignored:
+  - DL3008  # "pin apt package versions" — N/A for kali-rolling
+  - DL3013  # "pin pip versions" — we install the local package + latest pip

@@ -15,7 +15,8 @@ To use with Claude Code, add this to ~/.claude/mcp.json:
       }
     }
 
-Or, if running through Docker:
+Or, if running through Docker (build the image locally first with
+``docker build -t kalimcp .``):
 
     {
       "mcpServers": {
@@ -23,7 +24,8 @@ Or, if running through Docker:
           "command": "docker",
           "args": ["run", "-i", "--rm",
                    "-v", "~/.kalimcp:/root/.kalimcp",
-                   "ghcr.io/cryptojones/kalimcp:latest"]
+                   "-v", "/var/log/kalimcp.log:/var/log/kalimcp.log",
+                   "kalimcp"]
         }
       }
     }
@@ -507,7 +509,7 @@ async def msfvenom_payload(
 
 # ---------- passive tools ----------
 # These hit registry / DNS / local search, not the target itself.
-# The refuse-list guard on active-scan tools doesn't apply here —
+# They skip the active_tool decorator's scope warning —
 # a whois lookup for chase.com is harmless; an nmap scan of it isn't.
 
 @mcp.tool()

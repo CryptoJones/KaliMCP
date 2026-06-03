@@ -1,0 +1,33 @@
+# Build context hygiene — the Dockerfile only needs pyproject.toml + src/.
+# Everything below is either rebuilt in the image or irrelevant to it.
+
+.git
+.github
+.woodpecker.yml
+
+# Local virtualenvs / caches — the image builds its own venv.
+.venv
+venv
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+*.egg-info
+build
+dist
+
+# Tests + manual tooling don't ship in the runtime image.
+tests
+scripts
+
+# Docs / project meta.
+*.md
+LICENSE
+
+# Runtime + secret artifacts that must never enter an image layer.
+*.log
+.env
+authorizations.json
+*.authorizations.json

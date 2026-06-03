@@ -20,6 +20,15 @@ jobs:
       - name: ruff check
         run: ruff check src/ tests/
 
+  dockerfile-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
   test:
     runs-on: ubuntu-latest
     strategy:

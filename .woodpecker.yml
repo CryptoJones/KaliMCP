@@ -9,6 +9,11 @@ steps:
       - pip install -e '.[dev]'
       - ruff check src/ tests/
 
+  dockerfile-lint:
+    image: hadolint/hadolint:latest-debian
+    commands:
+      - hadolint Dockerfile
+
   test-3-11:
     image: python:3.11-slim
     commands:

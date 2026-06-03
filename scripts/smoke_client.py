@@ -8,15 +8,19 @@ tools, and runs one passive call (`dig_record`) plus one active
 call (`nmap_scan` against 127.0.0.1) to verify end-to-end wiring.
 
 No authorization token is required — the active-scan tools stopped
-taking one in cc66cf8. The refuse-list guard (`KALIMCP_ALLOW_REFUSED`
-to override) still applies but doesn't matter for 127.0.0.1.
+taking one in cc66cf8, and there is no refuse list. An active
+engagement with a declared scope would emit a non-blocking
+`out_of_scope` warning, but 127.0.0.1 trips nothing.
+
+This is a manual smoke script, not a pytest test — it needs a real
+`kalimcp` binary and a live nmap, so it is not collected by CI.
 
 Usage:
     # via the venv-installed kalimcp script (preferred):
-    python test_mcp_client.py
+    python scripts/smoke_client.py
 
     # with an explicit binary path:
-    KALIMCP_BIN=/path/to/.venv/bin/kalimcp python test_mcp_client.py
+    KALIMCP_BIN=/path/to/.venv/bin/kalimcp python scripts/smoke_client.py
 """
 
 from __future__ import annotations
@@ -82,9 +86,8 @@ async def main() -> None:
                 print(f"Error calling dig_record: {e}")
 
             # 2. Active call — uses the loopback so no operator
-            #    consent / scope question. Refuse-list doesn't apply
-            #    to 127.0.0.1. Skip with NO_ACTIVE=1 if running
-            #    somewhere nmap is disallowed.
+            #    consent / scope question. Skip with NO_ACTIVE=1 if
+            #    running somewhere nmap is disallowed.
             if os.getenv("NO_ACTIVE") == "1":
                 print("\nSkipping active nmap_scan (NO_ACTIVE=1).")
                 return

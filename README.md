@@ -262,6 +262,15 @@ See [CHANGELOG.md](CHANGELOG.md) for the per-release detail.
 
 ---
 
+## Contributing & security
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, the tool-wrapper
+  checklist, and the dual-mirror (GitHub + Codeberg) workflow.
+- [SECURITY.md](SECURITY.md) — authorized-use responsibility and how to
+  report a vulnerability in the server code itself.
+
+---
+
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE).

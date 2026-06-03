@@ -9,7 +9,7 @@ Every active engagement is a directory under
     findings.jsonl      append-only structured findings (one JSON per line)
     creds.jsonl         credential cache (mode 0600)
     loot/               extracted blobs (dumped data, ticket files)
-    screenshots/        PNG output from web_screenshot
+    screenshots/        PNG output (reserved for a future screenshot tool)
     notes.md            operator free-form notes
 
 Active engagement resolution order:

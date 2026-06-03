@@ -9,10 +9,11 @@ opens a TLS handshake which is technically a network touch but
 returns immediately after the cert exchange and is a normal
 pre-engagement information-gathering step.
 
-The refuse-list guard from `tools/_active.py` doesn't apply here —
-a whois lookup for chase.com is harmless, an nmap scan of it
-isn't. Passive calls still get audited so operators have a record
-of what was looked up.
+These do not go through the `active_tool` decorator — they carry no
+scope warning or auto-record hook, because a whois lookup is not a
+probe of the target. Passive calls still get audited (a
+`passive_invoke` event) so operators have a record of what was
+looked up.
 """
 
 from __future__ import annotations
