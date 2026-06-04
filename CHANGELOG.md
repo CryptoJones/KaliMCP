@@ -63,6 +63,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version-pinning rules are ignored because the base is rolling). A
   full image build stays out of CI — the Kali + metasploit image is too
   heavy to build per-push.
+- **mypy type checking** in both Woodpecker and GitHub Actions. The bar is
+  mypy's default (non-strict), matching this thin `@mcp.tool()` shim layer —
+  strict mode would mostly flag decorator and `Any`-generics noise rather than
+  real bugs. `[tool.mypy]` sets `files = ["src"]`. Two wrappers gained explicit
+  `dict[str, Any]` annotations (`tools/sqlmap.py`, `tools/hydra.py`) so the
+  checker passes clean.
+- **pip-audit dependency CVE scan** as its own job/step in both pipelines,
+  after the lint and type gates. CI upgrades `pip` first so a stale-pip
+  advisory can't fail the run, and a fresh resolve picks up the patched
+  `pyjwt` / `starlette` that `mcp` pulls in transitively.
 
 ### Changed
 

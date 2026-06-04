@@ -262,6 +262,24 @@ See [CHANGELOG.md](CHANGELOG.md) for the per-release detail.
 
 ---
 
+## Development
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+
+.venv/bin/ruff check .          # lint (E, F, W, B, I, UP)
+.venv/bin/mypy                  # type check (src/)
+.venv/bin/pip-audit             # dependency CVE scan
+.venv/bin/python -m pytest -q   # tests (no real subprocesses spawn)
+```
+
+CI (Woodpecker + GitHub Actions) runs ruff, mypy, pip-audit, and pytest on
+Python 3.11 and 3.12, plus a hadolint pass on the Dockerfile. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the tool-wrapper checklist.
+
+---
+
 ## Contributing & security
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, the tool-wrapper
