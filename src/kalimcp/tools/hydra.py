@@ -123,16 +123,9 @@ async def crack(
       - parsed: structured findings extracted from hydra output
     """
     if profile not in _PROFILES:
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": f"unknown profile: {profile!r}. Known: {sorted(_PROFILES)}",
-            "truncated": False,
-            "timed_out": False,
-            "profile": profile,
-            "argv": [],
-            "parsed": {
+        return run.error_result(
+            f"unknown profile: {profile!r}. Known: {sorted(_PROFILES)}",
+            parsed={
                 "success": False,
                 "credentials_found": [],
                 "tried_combinations": 0,
@@ -140,7 +133,8 @@ async def crack(
                 "services_tested": [],
                 "statistics": {},
             },
-        }
+            profile=profile,
+        )
 
     profile_cfg = _PROFILES[profile]
     user_wl = username_list or profile_cfg["wordlist"]

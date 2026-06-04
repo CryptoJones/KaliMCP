@@ -111,38 +111,20 @@ async def spray(
     user, secret, pwned}], failures_count}``.
     """
     if protocol not in _PROTOCOLS:
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": f"unknown protocol: {protocol!r}. Known: {list(_PROTOCOLS)}",
-            "truncated": False,
-            "timed_out": False,
-            "argv": [],
-            "parsed": _empty_parsed(),
-        }
+        return run.error_result(
+            f"unknown protocol: {protocol!r}. Known: {list(_PROTOCOLS)}",
+            parsed=_empty_parsed(),
+        )
     if not any((username, user_list)):
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": "no username material — pass `username=` or `user_list=`.",
-            "truncated": False,
-            "timed_out": False,
-            "argv": [],
-            "parsed": _empty_parsed(),
-        }
+        return run.error_result(
+            "no username material — pass `username=` or `user_list=`.",
+            parsed=_empty_parsed(),
+        )
     if not any((password, pass_list, nthash)):
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": "no secret material — pass `password=`, `pass_list=`, or `nthash=`.",
-            "truncated": False,
-            "timed_out": False,
-            "argv": [],
-            "parsed": _empty_parsed(),
-        }
+        return run.error_result(
+            "no secret material — pass `password=`, `pass_list=`, or `nthash=`.",
+            parsed=_empty_parsed(),
+        )
 
     argv: list[str] = ["netexec", protocol, target]
     if user_list:

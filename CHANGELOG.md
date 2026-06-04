@@ -18,8 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gone. Killing the group (not just the immediate child) also reaps tools
   that fork a real worker.
 
+### Changed — internal
+
+- **Validation failures go through one `run.error_result()` helper.** The
+  seventeen hand-rolled "bad input" return dicts scattered across the tool
+  wrappers (unknown profile/mode/protocol, missing wordlist, missing
+  credential material, …) collapsed onto a single helper that builds the
+  standard structured result (`exit_code -1`, empty output, empty argv).
+  Wrappers pass only what differs — the `stderr` message, their
+  empty-`parsed` skeleton, and any extra key such as `profile=`. Pure
+  refactor; the returned shapes are byte-for-byte identical.
+
 ### Removed — dead code
 
+- **`_KRB5_LINE` regex dropped from `tools/impacket.py`.** It was compiled
+  but never matched against anything — the kerberoast/asreproast wrappers
+  return hashes straight from stdout. `__version__` in the package
+  `__init__` was also synced to `0.9.0` (it had drifted to a stale `0.1.0`).
 - **`src/kalimcp/authz.py` deleted.** The module was entirely legacy:
   `is_refused()` had been a no-op stub returning `None` since the
   refuse list was dropped in v0.4 (`2143fdd`), and the `Authorization`

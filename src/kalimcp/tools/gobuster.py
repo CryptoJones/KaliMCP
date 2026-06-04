@@ -100,30 +100,13 @@ async def dir_scan(
     """
     wl = wordlist or _default_wordlist()
     if not wl:
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": (
-                "no wordlist available. Pass `wordlist=...` or install "
-                "wordlists (apt install wordlists seclists)."
-            ),
-            "truncated": False,
-            "timed_out": False,
-            "argv": [],
-            "parsed": _empty_parsed(),
-        }
+        return run.error_result(
+            "no wordlist available. Pass `wordlist=...` or install "
+            "wordlists (apt install wordlists seclists).",
+            parsed=_empty_parsed(),
+        )
     if not Path(wl).is_file():
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": f"wordlist not found: {wl}",
-            "truncated": False,
-            "timed_out": False,
-            "argv": [],
-            "parsed": _empty_parsed(),
-        }
+        return run.error_result(f"wordlist not found: {wl}", parsed=_empty_parsed())
     threads = max(1, min(int(threads), 50))
     argv = [
         "gobuster", "dir",

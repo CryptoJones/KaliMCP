@@ -29,10 +29,6 @@ _HASH_LINE = re.compile(
     r"^(?P<principal>[^:]+):(?P<rid>\d+):(?P<lmhash>[0-9a-fA-F]{32}):(?P<nthash>[0-9a-fA-F]{32}):::"
 )
 
-# `$krb5asrep$...` (GetNPUsers) and `$krb5tgs$...` (GetUserSPNs)
-# kerberoast / asreproast hash lines.
-_KRB5_LINE = re.compile(r"^\$krb5(?P<kind>asrep|tgs)\$[^\s]+")
-
 
 # ---------- GetNPUsers ----------
 
@@ -175,16 +171,10 @@ async def secretsdump(
     nthash}], kerberos_keys: [...], cleartext: [...]}``.
     """
     if not username:
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": "secretsdump needs `username`.",
-            "truncated": False,
-            "timed_out": False,
-            "argv": [],
-            "parsed": {"secrets": [], "kerberos_keys": [], "cleartext": []},
-        }
+        return run.error_result(
+            "secretsdump needs `username`.",
+            parsed={"secrets": [], "kerberos_keys": [], "cleartext": []},
+        )
     if nthash:
         target_spec = f"{username}@{target}"
         auth_args = ["-hashes", f":{nthash}"]
@@ -192,16 +182,10 @@ async def secretsdump(
         target_spec = f"{username}:{password}@{target}"
         auth_args = []
     else:
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": "secretsdump needs `password=` or `nthash=`.",
-            "truncated": False,
-            "timed_out": False,
-            "argv": [],
-            "parsed": {"secrets": [], "kerberos_keys": [], "cleartext": []},
-        }
+        return run.error_result(
+            "secretsdump needs `password=` or `nthash=`.",
+            parsed={"secrets": [], "kerberos_keys": [], "cleartext": []},
+        )
 
     argv: list[str] = ["impacket-secretsdump", target_spec, *auth_args]
     if just_dc:
@@ -270,16 +254,10 @@ async def smbclient(
         target_spec = f"{username}:{password}@{target}"
         auth_args = []
     else:
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": "smbclient needs `password=` or `nthash=`.",
-            "truncated": False,
-            "timed_out": False,
-            "argv": [],
-            "parsed": {"command": command, "output_lines": []},
-        }
+        return run.error_result(
+            "smbclient needs `password=` or `nthash=`.",
+            parsed={"command": command, "output_lines": []},
+        )
 
     argv: list[str] = [
         "impacket-smbclient", target_spec, *auth_args,
