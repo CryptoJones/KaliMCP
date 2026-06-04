@@ -33,7 +33,7 @@ def _parse_output(text: str) -> dict[str, Any]:
     Extracts key information: vulnerable parameters, database info, tables, etc.
     Returns a structured dict with findings.
     """
-    result = {
+    result: dict[str, Any] = {
         "success": False,
         "vulnerable": False,
         "injection_points": [],
