@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tool subprocesses no longer orphan when the server stops.** Wrapped
+  tools (nmap, hydra, sqlmap, …) now launch in their own process group
+  (`start_new_session=True`), and `run.run` kills the whole group on
+  timeout *and* on task cancellation. Cancellation is what fires when the
+  MCP server shuts down on stdin EOF or the client disconnects, so a
+  long scan can no longer keep running as an orphan after the agent is
+  gone. Killing the group (not just the immediate child) also reaps tools
+  that fork a real worker.
+
 ### Removed — dead code
 
 - **`src/kalimcp/authz.py` deleted.** The module was entirely legacy:
