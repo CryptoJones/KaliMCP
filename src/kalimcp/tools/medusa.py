@@ -90,16 +90,10 @@ async def crack(
     statistics}``.
     """
     if not user_list or not pass_list:
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": "medusa needs both `user_list` and `pass_list`.",
-            "truncated": False,
-            "timed_out": False,
-            "argv": [],
-            "parsed": _empty_parsed(),
-        }
+        return run.error_result(
+            "medusa needs both `user_list` and `pass_list`.",
+            parsed=_empty_parsed(),
+        )
     threads = max(1, min(int(threads), 32))
     argv = [
         "medusa",

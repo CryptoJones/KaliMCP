@@ -134,17 +134,11 @@ async def scan(
         Raw XML stays in ``stdout``.
     """
     if profile not in _PROFILES:
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": f"unknown profile: {profile!r}. Known: {sorted(_PROFILES)}",
-            "truncated": False,
-            "timed_out": False,
-            "profile": profile,
-            "argv": [],
-            "parsed": {"hosts": []},
-        }
+        return run.error_result(
+            f"unknown profile: {profile!r}. Known: {sorted(_PROFILES)}",
+            parsed={"hosts": []},
+            profile=profile,
+        )
     argv = ["nmap", *_PROFILES[profile], target]
     result = await run.run(argv, timeout=timeout_seconds)
     result["profile"] = profile

@@ -106,16 +106,9 @@ async def scan(
       - parsed: structured findings extracted from sqlmap output
     """
     if profile not in _PROFILES:
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": f"unknown profile: {profile!r}. Known: {sorted(_PROFILES)}",
-            "truncated": False,
-            "timed_out": False,
-            "profile": profile,
-            "argv": [],
-            "parsed": {
+        return run.error_result(
+            f"unknown profile: {profile!r}. Known: {sorted(_PROFILES)}",
+            parsed={
                 "success": False,
                 "vulnerable": False,
                 "injection_points": [],
@@ -123,7 +116,8 @@ async def scan(
                 "hosts_tested": [],
                 "statistics": {},
             },
-        }
+            profile=profile,
+        )
 
     argv = ["sqlmap", "-u", target, *_PROFILES[profile]]
     result = await run.run(argv, timeout=timeout_seconds)

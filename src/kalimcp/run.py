@@ -133,3 +133,31 @@ async def run(
 def quote_argv(argv: list[str]) -> str:
     """Return a shell-safe single-line representation for the audit log."""
     return " ".join(shlex.quote(a) for a in argv)
+
+
+def error_result(stderr: str, *, parsed: Any = None, **extra: Any) -> dict[str, Any]:
+    """Structured failure for an error caught *before* the subprocess launches.
+
+    Wrappers validate their inputs (known profile, wordlist exists, secret
+    supplied, …) and early-return one of these on a bad call. It mirrors the
+    shape of a real :func:`run` result — exit_code -1, empty output, nothing
+    timed out or truncated, empty argv — so the audit/record path downstream
+    treats a rejected call exactly like a tool that ran and failed.
+
+    ``parsed`` is attached only when given (wrappers pass their empty-parsed
+    skeleton so the result shape stays stable). ``**extra`` merges in
+    wrapper-specific keys such as ``profile=...``.
+    """
+    result: dict[str, Any] = {
+        "exit_code": -1,
+        "elapsed_s": 0,
+        "stdout": "",
+        "stderr": stderr,
+        "truncated": False,
+        "timed_out": False,
+        "argv": [],
+    }
+    if parsed is not None:
+        result["parsed"] = parsed
+    result.update(extra)
+    return result

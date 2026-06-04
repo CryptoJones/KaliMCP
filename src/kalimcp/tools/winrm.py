@@ -72,16 +72,10 @@ async def execute(
     output of the command, with netexec's prefix lines stripped.
     """
     if not (password or nthash):
-        return {
-            "exit_code": -1,
-            "elapsed_s": 0,
-            "stdout": "",
-            "stderr": "winrm_exec needs `password=` or `nthash=`.",
-            "truncated": False,
-            "timed_out": False,
-            "argv": [],
-            "parsed": {"output_lines": []},
-        }
+        return run.error_result(
+            "winrm_exec needs `password=` or `nthash=`.",
+            parsed={"output_lines": []},
+        )
     argv: list[str] = ["netexec", "winrm", target, "-u", username]
     if nthash:
         argv.extend(["-H", nthash])

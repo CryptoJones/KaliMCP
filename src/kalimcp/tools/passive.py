@@ -50,11 +50,7 @@ async def dig_record(
     """DNS query via dig. record_type is A / AAAA / MX / TXT / NS / etc."""
     rtype = (record_type or "A").upper()
     if not rtype.isalpha() or len(rtype) > 16:
-        return {
-            "exit_code": -1, "elapsed_s": 0, "stdout": "",
-            "stderr": f"invalid record_type: {record_type!r}",
-            "truncated": False, "timed_out": False, "argv": [],
-        }
+        return run.error_result(f"invalid record_type: {record_type!r}")
     return await _audited_run("dig", ["dig", "+short", "+timeout=5", domain, rtype], timeout_seconds)
 
 
