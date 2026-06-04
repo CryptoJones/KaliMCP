@@ -45,6 +45,8 @@ dev = [
   "pytest>=7",
   "pytest-asyncio>=0.23",
   "ruff>=0.6",
+  "mypy>=1.9",
+  "pip-audit>=2.10.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -54,6 +56,14 @@ packages = ["src/kalimcp"]
 testpaths = ["tests"]
 addopts = "-ra"
 asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+# Default (non-strict) bar: catch real type errors without drowning in
+# untyped-decorator / Any-generics noise from FastMCP's @mcp.tool() shims.
+# The thin server.py layer is where that noise concentrates, so it isn't
+# worth a strict gate here (unlike the sibling PerplexityAgent).
+files = ["src"]
 
 [tool.ruff]
 target-version = "py311"

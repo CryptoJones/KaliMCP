@@ -19,7 +19,7 @@ from ._active import active_tool
 # mode, no wordlists, hydra walks a charset instead, tail flags appended after
 # wordlists). hydra honors the last -t / -W / -w it sees, so each profile
 # specifies its own full flag tail rather than mixing a shared base.
-_PROFILES = {
+_PROFILES: dict[str, dict[str, Any]] = {
     "quick": {
         "wordlist": "/usr/share/wordlists/fasttrack.txt",
         "flags": ["-t", "4", "-W", "3", "-w", "15", "-v"],
@@ -45,7 +45,7 @@ def _parse_output(text: str) -> dict[str, Any]:
     Extracts cracked credentials, tried combinations, etc.
     Returns a structured dict with findings.
     """
-    result = {
+    result: dict[str, Any] = {
         "success": False,
         "credentials_found": [],
         "tried_combinations": 0,

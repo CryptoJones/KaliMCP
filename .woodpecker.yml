@@ -8,6 +8,13 @@ steps:
     commands:
       - pip install -e '.[dev]'
       - ruff check src/ tests/
+      - mypy
+
+  audit:
+    image: python:3.12-slim
+    commands:
+      - pip install -e '.[dev]'
+      - pip-audit
 
   dockerfile-lint:
     image: hadolint/hadolint:latest-debian
