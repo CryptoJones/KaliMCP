@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Audit-log secret redaction is now fail-closed (#8).** `redact_argv`
+  previously only redacted a secret when it was a standalone token
+  immediately after an exact-match secret flag, so two common shapes
+  leaked verbatim to `/var/log/kalimcp.log`: the fused `--wordlist=PATH`
+  form (john) and passwords embedded in positionals such as the impacket
+  `user:pass@host` target spec. `redact_argv` now also splits `--flag=value`
+  and, crucially, redacts **by value** — the `@active_tool` decorator hands
+  it the raw secret kwargs (`password`, `nthash`, `hashes`, …) and any
+  token containing one is hashed to `sha256:<8hex>`. A wrapper that forgets
+  to declare `secret_flags` can no longer silently leak a known secret.
+- **Audit log is created owner-only (0600) (#10).** The log was created
+  with the default umask (typically world-readable 0644). It is now opened
+  via `os.open(..., 0o600)`, and `configure()` tightens the mode of any
+  pre-existing log file on first resolve. The `_writable` probe uses the
+  same restricted open so it can't create a loose file first.
+
 ### Fixed
 
 - **Tool subprocesses no longer orphan when the server stops.** Wrapped

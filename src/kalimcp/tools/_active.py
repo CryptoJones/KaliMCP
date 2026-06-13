@@ -28,6 +28,19 @@ def _autorecord_enabled() -> bool:
     return os.environ.get("KALIMCP_AUTORECORD") == "1"
 
 
+# Keyword-argument names whose *value* is a secret, regardless of how a
+# given wrapper splices it into argv. The decorator hashes these values
+# out of the logged argv by substring match (see ``audit.redact_argv``).
+# This is the fail-closed half of the redaction story: even a wrapper
+# that embeds a password in a positional (``user:pass@host``) or forgets
+# the right ``secret_flags`` still gets the secret redacted, because the
+# raw value is right here in kwargs. Per-wrapper ``secret_kwargs`` unions
+# with this default set.
+_DEFAULT_SECRET_KWARGS: tuple[str, ...] = (
+    "password", "nthash", "hashes", "secret", "ntlm_hash",
+)
+
+
 # Mapping from a key in result["parsed"] to a (category, payload_keys)
 # tuple. When the engagement workspace's auto-record is enabled, the
 # decorator iterates this mapping and records each matched item.
@@ -114,21 +127,31 @@ def active_tool(
     tool_name: str,
     *,
     secret_flags: Iterable[str] | None = None,
+    secret_kwargs: Iterable[str] | None = None,
 ):
     """Decorator: audit log + scope warning around a tool call.
 
     The decorated coroutine must accept ``target`` as a keyword
     argument.
 
-    ``secret_flags`` — set of CLI flags whose immediately-following
-    argv value carries a secret (password literal, cred file path).
-    The audit-log ``argv`` field has those values rewritten to
-    ``sha256:<8hex>`` via ``audit.redact_argv`` before being
-    written. Default ``None`` means log argv verbatim. Credential
-    tools (hydra, medusa, netexec, ...) should set this; recon
-    tools should not.
+    ``secret_flags`` — set of CLI flags whose argv value carries a
+    secret (password literal, cred file path), in either the
+    ``-flag value`` or ``--flag=value`` shape. Those values are
+    rewritten to ``sha256:<8hex>`` via ``audit.redact_argv`` before
+    the ``argv`` field is written.
+
+    ``secret_kwargs`` — extra keyword-argument names (beyond the
+    always-on ``_DEFAULT_SECRET_KWARGS``) whose value is a secret.
+    The decorator hashes those values out of the logged argv *by
+    substring match*, which catches secrets fused into positionals
+    (``user:pass@host``) that no flag points at. This makes
+    redaction fail-closed: a wrapper that forgets ``secret_flags``
+    still won't leak a known secret kwarg.
     """
     secret_flag_set: tuple[str, ...] = tuple(secret_flags) if secret_flags else ()
+    secret_kwarg_set: tuple[str, ...] = (
+        *_DEFAULT_SECRET_KWARGS, *(tuple(secret_kwargs) if secret_kwargs else ())
+    )
 
     def wrap(fn: Callable[..., Awaitable[dict[str, Any]]]):
         @functools.wraps(fn)
@@ -151,8 +174,14 @@ def active_tool(
                     }
 
             raw_argv = result.get("argv", [])
-            if secret_flag_set:
-                logged_argv = audit.redact_argv(raw_argv, secret_flag_set)
+            secret_values = [
+                v for name in secret_kwarg_set
+                if isinstance(v := kwargs.get(name), str) and v
+            ]
+            if secret_flag_set or secret_values:
+                logged_argv = audit.redact_argv(
+                    raw_argv, secret_flag_set, secret_values,
+                )
                 secrets_redacted = logged_argv != raw_argv
             else:
                 logged_argv = raw_argv

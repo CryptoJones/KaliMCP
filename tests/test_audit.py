@@ -98,3 +98,75 @@ def test_time_block_returns_elapsed_ms():
     assert isinstance(e, float)
     assert e >= 10
     assert e < 1000  # sanity bound
+
+
+# ---------- redact_argv ----------
+
+
+def test_redact_space_separated_flag_value():
+    """The classic `-p value` shape is hashed (and the flag kept)."""
+    out = audit.redact_argv(["hydra", "-p", "hunter2", "host"], {"-p"})
+    assert out[1] == "-p"
+    assert out[2].startswith("sha256:")
+    assert "hunter2" not in out
+
+
+def test_redact_fused_flag_equals_value():
+    """`--wordlist=value` (john's shape) redacts the value half only."""
+    out = audit.redact_argv(
+        ["john", "--wordlist=/loot/creds.txt", "hashes"], {"--wordlist", "-w"}
+    )
+    assert out[1].startswith("--wordlist=sha256:")
+    assert "/loot/creds.txt" not in " ".join(out)
+
+
+def test_redact_by_value_embedded_in_positional():
+    """A password fused into a `user:pass@host` positional is redacted
+    even though no flag points at it (fail-closed path)."""
+    out = audit.redact_argv(
+        ["impacket-secretsdump", "admin:hunter2@dc.corp.local"],
+        secret_flags={"-password"},
+        secret_values=["hunter2"],
+    )
+    joined = " ".join(out)
+    assert "hunter2" not in joined
+    # Surrounding structure is preserved so the log still shows shape.
+    assert "admin:" in out[1] and "@dc.corp.local" in out[1]
+    assert "sha256:" in out[1]
+
+
+def test_redact_by_value_skips_too_short_secret():
+    """A 1-2 char secret would corrupt every token — left alone here."""
+    out = audit.redact_argv(["tool", "ab", "value"], None, secret_values=["ab"])
+    assert out == ["tool", "ab", "value"]
+
+
+def test_redact_noop_without_flags_or_values():
+    argv = ["nmap", "-sV", "10.0.0.1"]
+    assert audit.redact_argv(argv, None) == argv
+    assert audit.redact_argv(argv, None, []) == argv
+
+
+# ---------- file mode (#10) ----------
+
+
+def test_log_file_created_0600(tmp_path):
+    target = tmp_path / "audit.log"
+    audit.configure(path=target)
+    audit.log("test")
+    assert target.stat().st_mode & 0o777 == 0o600
+
+
+def test_existing_loose_log_tightened_on_configure(tmp_path):
+    target = tmp_path / "audit.log"
+    target.write_text("preexisting\n", encoding="utf-8")
+    target.chmod(0o644)
+    audit.configure(path=target)
+    assert target.stat().st_mode & 0o777 == 0o600
+
+
+def test_writable_probe_does_not_create_loose_file(tmp_path):
+    target = tmp_path / "probe.log"
+    audit.configure(path=target)  # probes via _writable, creating the file
+    assert target.exists()
+    assert target.stat().st_mode & 0o777 == 0o600
