@@ -49,6 +49,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         hashcat \
         impacket-scripts \
         metasploit-framework \
+        openssh-client \
+        sshpass \
+        netcat-traditional \
         wordlists seclists \
         ca-certificates \
         && apt-get clean \

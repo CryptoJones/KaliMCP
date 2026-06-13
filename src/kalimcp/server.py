@@ -37,7 +37,7 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 
-from . import audit, engagement
+from . import audit, engagement, sessions
 from .tools import (
     ffuf,
     gobuster,
@@ -699,6 +699,90 @@ async def note_append(text: str) -> dict:
 async def wordlist_list() -> dict:
     """Enumerate wordlists under /usr/share/wordlists + /usr/share/seclists."""
     return {"wordlists": engagement.list_wordlists()}
+
+
+# ---------- interactive sessions ----------
+# Long-lived SSH (OpenSSH ControlMaster) and reverse-shell sessions, keyed
+# by session id. Audited, not scope-gated (per the no-gates rule).
+
+@mcp.tool()
+async def ssh_session_start(
+    host: str,
+    user: str,
+    password: str = "",
+    key: str = "",
+    port: int = 22,
+    timeout_seconds: int = 30,
+) -> dict:
+    """Open a persistent multiplexed SSH session; returns a `session_id`.
+
+    Pass `password` (via sshpass, redacted in the audit log) or `key` (a
+    private-key path). Reuse the session with `ssh_session_exec`.
+    """
+    return await sessions.ssh_start(
+        host=host, user=user, password=password, key=key,
+        port=port, timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def ssh_session_exec(session_id: str, command: str, timeout_seconds: int = 60) -> dict:
+    """Run a command on an open SSH session (reuses the master connection)."""
+    return await sessions.ssh_exec(session_id, command, timeout_seconds=timeout_seconds)
+
+
+@mcp.tool()
+async def ssh_session_stop(session_id: str) -> dict:
+    """Close an SSH session (tear down the master connection)."""
+    return await sessions.ssh_stop(session_id)
+
+
+@mcp.tool()
+async def revshell_listen(
+    port: int,
+    trigger: str = "",
+    wait_seconds: int = 5,
+) -> dict:
+    """Start a reverse-shell listener on `port`.
+
+    Optional `trigger` is a local command that makes the target connect
+    back; it's fired in the background and the call returns after
+    `wait_seconds` with listener status — it never blocks waiting for the
+    shell. Interact via `revshell_exec`.
+    """
+    return await sessions.revshell_listen(port=port, trigger=trigger, wait_seconds=wait_seconds)
+
+
+@mcp.tool()
+async def revshell_exec(session_id: str, command: str = "") -> dict:
+    """Send a command to a connected reverse shell and return new output.
+    Empty `command` just drains pending output."""
+    return await sessions.revshell_exec(session_id, command)
+
+
+@mcp.tool()
+async def revshell_stop(session_id: str) -> dict:
+    """Stop a reverse-shell listener (and reap its payload-trigger process)."""
+    return await sessions.revshell_stop(session_id)
+
+
+@mcp.tool()
+async def session_status(session_id: str) -> dict:
+    """Status of an SSH or reverse-shell session by id."""
+    return sessions.session_status(session_id)
+
+
+@mcp.tool()
+async def session_list() -> dict:
+    """List all open SSH and reverse-shell sessions."""
+    return sessions.session_list()
+
+
+@mcp.tool()
+async def system_network_info() -> dict:
+    """Local interface addresses + a recommended LHOST for a reverse shell
+    (prefers a VPN/tun address on an engagement)."""
+    return sessions.system_network_info()
 
 
 def main() -> int:

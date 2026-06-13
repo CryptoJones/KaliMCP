@@ -59,6 +59,15 @@ EXPECTED_TOOLS = {
     "loot_read",
     "note_append",
     "wordlist_list",
+    "ssh_session_start",
+    "ssh_session_exec",
+    "ssh_session_stop",
+    "revshell_listen",
+    "revshell_exec",
+    "revshell_stop",
+    "session_status",
+    "session_list",
+    "system_network_info",
 }
 
 

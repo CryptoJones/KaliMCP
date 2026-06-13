@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — tools
+
+- **Interactive sessions: SSH + reverse shell (#16).** New `kalimcp.sessions`
+  manages long-lived sessions keyed by id. **SSH** (`ssh_session_start` /
+  `ssh_session_exec` / `ssh_session_stop`) is backed by OpenSSH
+  ControlMaster — the start opens a multiplexed master socket and each exec
+  reuses it without re-authenticating, so every operation is a normal
+  audited `run.run` subprocess (no new dependency). Passwords (via sshpass)
+  are redacted in the audit log. **Reverse shells** (`revshell_listen` /
+  `revshell_exec` / `revshell_stop`) run a persistent `nc` listener drained
+  by a background thread; `revshell_listen` supports the **non-blocking
+  payload trigger** (fire the callback command in the background, wait N s,
+  return listener status instead of blocking the server, and reap the
+  trigger on stop). Shared `session_status` / `session_list`, plus
+  `system_network_info` (interface addresses + recommended LHOST, preferring
+  a VPN/tun address) and a `detect_blocking_command` helper. Sessions are
+  **audited, not scope-gated** (per the no-gates rule); the persistent-process
+  layer is isolated behind a mockable factory so the suite spawns nothing
+  real. Dockerfile gains `openssh-client`, `sshpass`, `netcat-traditional`.
+
 ### Security
 
 - **Audit-log secret redaction is now fail-closed (#8).** `redact_argv`
