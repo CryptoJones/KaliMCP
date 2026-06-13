@@ -94,6 +94,11 @@ async def crack(
     file. Returns the *show* output in stdout because the run
     output is mostly progress noise that the agent doesn't want.
     """
+    if err := run.validate_file(target, "hashfile", parsed=_empty_parsed()):
+        return err
+    if err := run.validate_file(wordlist, "wordlist", parsed=_empty_parsed()):
+        return err
+
     argv = ["john", f"--wordlist={wordlist}"]
     if format:
         argv.append(f"--format={format}")

@@ -55,6 +55,23 @@ def test_create_sanitizes_unsafe_chars(workspace):
     assert " " not in result["name"]
 
 
+def test_sanitize_name_rejects_dot_traversal(workspace):
+    """'..' / '.' survive the charset regex (it allows '.') but must not
+    escape the engagements root — they collapse to the default name."""
+    assert workspace._sanitize_name("..") == workspace.DEFAULT_ENGAGEMENT
+    assert workspace._sanitize_name(".") == workspace.DEFAULT_ENGAGEMENT
+    assert workspace._sanitize_name("...") == workspace.DEFAULT_ENGAGEMENT
+    # A legitimate dotted name is left alone.
+    assert workspace._sanitize_name("op.v2") == "op.v2"
+
+
+def test_engagement_dir_for_dotdot_stays_within_root(workspace):
+    """engagement_dir('..') must resolve inside ENGAGEMENTS_DIR, not above it."""
+    d = workspace.engagement_dir("..").resolve()
+    root = workspace.ENGAGEMENTS_DIR.resolve()
+    assert root == d or root in d.parents
+
+
 def test_list_all_returns_engagements_sorted_recent_first(workspace):
     workspace.create("op_a")
     workspace.create("op_b")
@@ -263,6 +280,24 @@ def test_scope_matches_url_pattern(workspace):
     workspace.use("op")
     assert workspace.scope_matches("https://example.com/api/users") is True
     assert workspace.scope_matches("https://other.com/api/users") is False
+
+
+def test_extract_host_parses_bracketed_ipv6(workspace):
+    """Bracketed IPv6 (with or without a port) yields the bare address so
+    ip_address() can match it — previously fell through unparsed."""
+    assert workspace._extract_host("[::1]:8080") == "::1"
+    assert workspace._extract_host("[2001:db8::1]") == "2001:db8::1"
+    # A bare (unbracketed) literal is left intact for ip_address().
+    assert workspace._extract_host("::1") == "::1"
+
+
+def test_scope_matches_ipv6_target(workspace):
+    """An out-of-scope IPv6 target must actually report out-of-scope
+    (the bug: it silently matched because the host never parsed)."""
+    workspace.create("op", scope=["2001:db8::/32"])
+    workspace.use("op")
+    assert workspace.scope_matches("[2001:db8::5]:443") is True
+    assert workspace.scope_matches("[2001:dead::5]:443") is False
 
 
 def test_scope_matches_no_engagement_returns_true(workspace):

@@ -21,6 +21,7 @@ import asyncio
 import os
 import shlex
 import signal
+from pathlib import Path
 from typing import Any
 
 DEFAULT_TIMEOUT_SECONDS = 300
@@ -128,6 +129,34 @@ async def run(
         "truncated": truncated,
         "timed_out": timed_out,
     }
+
+
+def validate_file(
+    path: str, label: str = "file", *, parsed: Any = None
+) -> dict[str, Any] | None:
+    """Shared input-path check for wrappers that take a file argument.
+
+    Returns ``None`` when ``path`` names an existing regular file, or an
+    :func:`error_result` describing the problem otherwise. This is the
+    single choke point the issue-#9 review asked for: ffuf and gobuster
+    used to hand-roll ``Path(wl).is_file()`` while the credential/cracking
+    wrappers (hydra, john, hashcat) silently passed any agent-supplied
+    path straight to the tool. Routing them all through here means a new
+    wrapper can't omit the check, and a bad path yields a clean structured
+    error instead of a confusing tool-level failure.
+
+    This is existence/type validation, not a path allowlist — consistent
+    with the project's no-authorization-gate design rule. It does not
+    restrict *which* files an operator-trusted agent may point a tool at.
+    """
+    if not path:
+        return error_result(f"no {label} provided", parsed=parsed)
+    try:
+        if not Path(path).is_file():
+            return error_result(f"{label} not found: {path}", parsed=parsed)
+    except OSError as exc:
+        return error_result(f"{label} not accessible: {path} ({exc})", parsed=parsed)
+    return None
 
 
 def quote_argv(argv: list[str]) -> str:
