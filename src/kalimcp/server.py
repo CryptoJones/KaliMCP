@@ -37,7 +37,7 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 
-from . import audit, engagement
+from . import audit, engagement, oast
 from .tools import (
     ffuf,
     gobuster,
@@ -699,6 +699,41 @@ async def note_append(text: str) -> dict:
 async def wordlist_list() -> dict:
     """Enumerate wordlists under /usr/share/wordlists + /usr/share/seclists."""
     return {"wordlists": engagement.list_wordlists()}
+
+
+# ---------- OAST / out-of-band callback catcher ----------
+# Self-hosted (no third-party collaborator), off until oast_start. For blind
+# vuln detection: the target calls back to a host we control.
+
+@mcp.tool()
+async def oast_start(host: str = "127.0.0.1", port: int = 8000) -> dict:
+    """Start the self-hosted OOB callback catcher (HTTP). Off by default.
+
+    Bind `host` to an address the target can reach (e.g. your VPN/tun IP —
+    see `system_network_info`). Then `oast_register` payloads and `oast_poll`
+    for callbacks."""
+    return await oast.oast_start(host=host, port=port)
+
+
+@mcp.tool()
+async def oast_register(vuln_class: str = "generic") -> dict:
+    """Mint a correlation token + `{OAST}` payloads for a vuln class
+    (ssrf / rce / xxe / log4shell / sqli_oob / generic) and persist a
+    `pending_oob` record. Inject a returned payload into the target."""
+    return oast.oast_register(vuln_class)
+
+
+@mcp.tool()
+async def oast_poll() -> dict:
+    """Return captured OOB interactions; any whose path/Host carries a
+    pending token materializes an `oob_confirmed` finding."""
+    return oast.oast_poll()
+
+
+@mcp.tool()
+async def oast_stop() -> dict:
+    """Stop the OOB catcher and discard in-process interactions."""
+    return await oast.oast_stop()
 
 
 def main() -> int:

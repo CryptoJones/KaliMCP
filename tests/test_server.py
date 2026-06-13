@@ -59,6 +59,10 @@ EXPECTED_TOOLS = {
     "loot_read",
     "note_append",
     "wordlist_list",
+    "oast_start",
+    "oast_register",
+    "oast_poll",
+    "oast_stop",
 }
 
 

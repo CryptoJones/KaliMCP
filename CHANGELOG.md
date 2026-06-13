@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — tools
+
+- **Self-hosted OAST / OOB callback catcher (#17).** New `kalimcp.oast` is a
+  pure-Python, **self-hosted** HTTP catcher for blind-vuln detection — no
+  third-party collaborator, and **off by default** (nothing listens until
+  `oast_start`). `oast_register(vuln_class)` mints a unique correlation token,
+  renders payloads from a `{OAST}` template library (ssrf / rce / xxe /
+  log4shell / sqli_oob / generic), and persists a `pending_oob` finding.
+  `oast_poll` returns captured interactions and, for any whose path or Host
+  carries a pending token, **materializes an `oob_confirmed` finding** —
+  turning a blind guess into evidence. Each registration and correlated hit
+  is audited; the catcher's secret key is redacted; captured interactions
+  stay in-process (not written to disk). The socket server sits behind a
+  mockable factory so the suite binds no real port.
+
 ### Security
 
 - **Audit-log secret redaction is now fail-closed (#8).** `redact_argv`
