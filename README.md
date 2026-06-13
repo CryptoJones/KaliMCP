@@ -50,6 +50,15 @@ values on the command line. Those values are redacted in the
 audit log — the flag stays, but the value is rewritten to
 `sha256:<8hex>` so the literal never lands in the log file.
 
+Tool output is treated as **untrusted, attacker-controlled data**:
+a scanned host's banners, page titles and headers can carry a
+prompt-injection payload. Every active-tool result is tagged
+`untrusted_output: true` (with a note telling the agent to treat it
+as inert data) and the `stdout`/`stderr` handed to the model is
+bounded (default 64 KiB, `KALIMCP_MODEL_OUTPUT_LIMIT` to change); the
+full output stays in the capture and, with `KALIMCP_AUTORECORD=1`, in
+the engagement loot store.
+
 ---
 
 ## What it does
