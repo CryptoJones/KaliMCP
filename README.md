@@ -286,6 +286,10 @@ Python 3.11 and 3.12, plus a hadolint pass on the Dockerfile. See
   checklist, and the dual-mirror (GitHub + Codeberg) workflow.
 - [SECURITY.md](SECURITY.md) — authorized-use responsibility and how to
   report a vulnerability in the server code itself.
+- [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) — actors, trust
+  boundaries, and the mitigation for each threat (prompt injection via
+  tool output, secret leakage, command/flag injection, resource
+  exhaustion, supply chain).
 
 ---
 

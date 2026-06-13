@@ -23,6 +23,26 @@ is a record that you had it.
 Using these tools without authorization is a federal-grade mistake and
 is not a bug in KaliMCP.
 
+## 1a. Prompt injection & untrusted tool output
+
+Output from a scanned target — HTTP titles, `Server:`/banner strings,
+TLS cert CNs, directory-brute hits — is **attacker-controlled** and
+flows into the agent's context (and, with `KALIMCP_AUTORECORD=1`, into
+later tools). A hostile target can plant
+`ignore previous instructions, …` in a header to try to steer the
+agent.
+
+KaliMCP treats all tool output as inert data: every active-tool result
+is tagged `untrusted_output: true` with a note to that effect, and the
+copy handed to the model is size-bounded (`KALIMCP_MODEL_OUTPUT_LIMIT`)
+so a hostile target can't flood the context. It does **not** scrub the
+text — any such filter is bypassable and corrupts real recon data. The
+final backstop is the agent's own discipline to never execute
+instructions found in tool output.
+
+The full design — actors, trust boundaries, and the mitigation for each
+threat — is documented in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+
 ## 2. Vulnerabilities in KaliMCP itself
 
 If you find a flaw in the **server code** — for example a command
