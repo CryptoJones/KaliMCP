@@ -36,11 +36,38 @@ _resolved_path: Path | None = None
 _disabled: bool = False
 _warned: bool = False
 
+# The audit log holds recon metadata and credential-flag usage — more
+# sensitive than the engagement loot store, which is already 0600. Open
+# (and create) it owner-only so a default umask of 022 can't leave it
+# world-readable.
+_LOG_MODE = 0o600
+
+
+def _open_append(path: Path):
+    """Open ``path`` for append, creating it 0600 if absent.
+
+    ``os.open`` applies the mode only on creation, so a pre-existing
+    file keeps its own mode (``configure`` tightens those separately).
+    Returns a text file object; the caller closes it.
+    """
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, _LOG_MODE)
+    return os.fdopen(fd, "a", encoding="utf-8")
+
+
+def _tighten_mode(path: Path) -> None:
+    """Best-effort chmod to 0600 for a log file created before this
+    discipline (or by another tool with a looser umask)."""
+    try:
+        if path.exists():
+            path.chmod(_LOG_MODE)
+    except OSError:
+        pass
+
 
 def _writable(path: Path) -> bool:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8"):
+        with _open_append(path):
             pass
         return True
     except (PermissionError, OSError):
@@ -66,6 +93,7 @@ def configure(path: str | os.PathLike | None = None, disabled: bool = False) -> 
 
     if _writable(candidate):
         _resolved_path = candidate
+        _tighten_mode(candidate)
         return candidate
 
     if path is not None or os.environ.get("KALIMCP_LOG_FILE"):
@@ -78,6 +106,7 @@ def configure(path: str | os.PathLike | None = None, disabled: bool = False) -> 
 
     if _writable(FALLBACK_LOG_PATH):
         _resolved_path = FALLBACK_LOG_PATH
+        _tighten_mode(FALLBACK_LOG_PATH)
         if not _warned:
             print(
                 f"kalimcp: {DEFAULT_LOG_PATH} not writable; logging to "
@@ -113,7 +142,7 @@ def log(event: str, **fields: Any) -> None:
         entry[k] = v
     try:
         line = json.dumps(entry, sort_keys=True, default=str) + "\n"
-        with path.open("a", encoding="utf-8") as fh:
+        with _open_append(path) as fh:
             fh.write(line)
     except (OSError, TypeError, ValueError):
         return
@@ -138,38 +167,85 @@ def time_block():
     return _T()
 
 
-def redact_argv(argv: list[str], secret_flags: Iterable[str] | None) -> list[str]:
-    """Return a copy of ``argv`` with values following secret-bearing
-    flags replaced by ``sha256:<8hex>``.
+# A secret value shorter than this is not redacted by substring match:
+# a 1-2 char password would match (and corrupt) nearly every token in
+# argv, including flags and the binary name. Such values are degenerate
+# anyway; the flag-based path still covers them when they follow a flag.
+_MIN_REDACTABLE_VALUE = 3
 
-    Credential tools (hydra, medusa, netexec, ...) pass passwords or
-    cred-bearing file paths on the command line. Logging argv
-    verbatim would write those literals into the audit file, which
-    defeats the file-mode-0600 discipline applied to a real loot
-    store. This helper rewrites just the secret values; the flag
-    itself stays so operators can still see *that* a credential was
-    used, just not its content.
+
+def _hash8(value: str) -> str:
+    """``sha256:<8hex>`` digest of ``value`` — the redaction token."""
+    digest = hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()[:8]
+    return f"sha256:{digest}"
+
+
+def redact_argv(
+    argv: list[str],
+    secret_flags: Iterable[str] | None,
+    secret_values: Iterable[str] | None = None,
+) -> list[str]:
+    """Return a copy of ``argv`` with secret material replaced by
+    ``sha256:<8hex>``.
+
+    Credential tools (hydra, medusa, netexec, impacket, ...) pass
+    passwords or cred-bearing file paths on the command line. Logging
+    argv verbatim would write those literals into the audit file,
+    which defeats the file-mode-0600 discipline applied to the log.
+    This helper rewrites just the secret values; the surrounding flag
+    and structure stay so operators can still see *that* a credential
+    was used, just not its content.
+
+    Three shapes are redacted:
+
+    1. ``-flag value`` — the standalone token after a secret flag.
+    2. ``--flag=value`` — the value half of a fused token whose
+       left side is a secret flag.
+    3. **By value** — any ``secret_values`` substring found anywhere
+       in a token (e.g. a password fused into a ``user:pass@host``
+       positional). This is the fail-*closed* path: it redacts the
+       secret even when a wrapper forgot to declare the right flag,
+       and even when the secret never rides behind a flag at all.
 
     The replacement is the first 8 hex chars of the SHA-256 hash of
     the value, prefixed with ``sha256:``. That lets an operator who
     has the suspected plaintext verify a match, without exposing
     anything if the audit log leaks.
 
-    No-op (returns ``argv`` unchanged) when ``secret_flags`` is
-    falsy.
+    No-op (returns ``argv`` unchanged) when both ``secret_flags`` and
+    ``secret_values`` are falsy.
     """
-    if not secret_flags:
+    flags = set(secret_flags or ())
+    # Longest first so a value that is a substring of another doesn't
+    # get partially rewritten by the shorter one.
+    values = sorted(
+        {v for v in (secret_values or []) if v and len(v) >= _MIN_REDACTABLE_VALUE},
+        key=len,
+        reverse=True,
+    )
+    if not flags and not values:
         return list(argv)
-    flags = set(secret_flags)
+
+    def by_value(tok: str) -> str:
+        for v in values:
+            if v in tok:
+                tok = tok.replace(v, _hash8(v))
+        return tok
+
     out: list[str] = []
     skip_next = False
     for tok in argv:
         if skip_next:
-            digest = hashlib.sha256(tok.encode("utf-8", errors="replace")).hexdigest()[:8]
-            out.append(f"sha256:{digest}")
+            # Whole token is the secret-flag's value.
+            out.append(_hash8(tok))
             skip_next = False
             continue
-        out.append(tok)
+        # `--flag=value` fused form: redact the value half only.
+        name, sep, val = tok.partition("=")
+        if sep and name in flags:
+            out.append(f"{name}={_hash8(val)}")
+            continue
+        out.append(by_value(tok))
         if tok in flags:
             skip_next = True
     return out

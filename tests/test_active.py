@@ -114,6 +114,62 @@ async def test_audit_log_redacts_secret_flag_values(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_audit_log_redacts_password_fused_in_positional(tmp_path, monkeypatch):
+    """A password embedded in a positional (impacket `user:pass@host`)
+    is redacted by value even though no secret flag points at it."""
+    from kalimcp import audit
+
+    log_path = tmp_path / "audit.log"
+    monkeypatch.setenv("KALIMCP_LOG_FILE", str(log_path))
+    audit.configure()
+
+    @active_tool("test-impacket", secret_flags={"-password", "-hashes"})
+    async def stub(target: str, *, username: str, password: str = "", **kwargs):
+        return {
+            "exit_code": 0,
+            "argv": ["impacket-secretsdump", f"{username}:{password}@{target}"],
+            "stdout": "",
+        }
+
+    await stub(target="dc.corp.local", username="admin", password="hunter2")
+
+    import json
+    lines = log_path.read_text().strip().splitlines()
+    invoke = [json.loads(line) for line in lines if json.loads(line).get("event") == "tool_invoke"]
+    argv = invoke[-1]["argv"]
+    assert "hunter2" not in " ".join(argv)
+    assert "hunter2@dc.corp.local" not in " ".join(argv)
+    assert invoke[-1]["secrets_redacted"] is True
+
+
+@pytest.mark.asyncio
+async def test_audit_log_redacts_fused_flag_equals_value(tmp_path, monkeypatch):
+    """`--wordlist=path` (john's shape) is redacted via the secret flag."""
+    from kalimcp import audit
+
+    log_path = tmp_path / "audit.log"
+    monkeypatch.setenv("KALIMCP_LOG_FILE", str(log_path))
+    audit.configure()
+
+    @active_tool("test-john", secret_flags={"--wordlist", "-w"})
+    async def stub(target: str, **kwargs):
+        return {
+            "exit_code": 0,
+            "argv": ["john", "--wordlist=/loot/creds.txt", target],
+            "stdout": "",
+        }
+
+    await stub(target="/loot/hashes.txt")
+    import json
+    lines = log_path.read_text().strip().splitlines()
+    invoke = [json.loads(line) for line in lines if json.loads(line).get("event") == "tool_invoke"]
+    argv = invoke[-1]["argv"]
+    assert "/loot/creds.txt" not in " ".join(argv)
+    assert any(t.startswith("--wordlist=sha256:") for t in argv)
+    assert invoke[-1]["secrets_redacted"] is True
+
+
+@pytest.mark.asyncio
 async def test_audit_log_no_redaction_when_no_secret_flag_present(tmp_path, monkeypatch):
     """If a wrapper sets secret_flags but the argv has none, secrets_redacted=False."""
     from kalimcp import audit
