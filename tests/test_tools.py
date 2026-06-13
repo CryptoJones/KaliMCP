@@ -40,6 +40,17 @@ from kalimcp.tools import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _files_exist():
+    """Wrappers now route file-path args through ``run.validate_file``
+    (shared choke point, issue #9 Theme A). These argv-shape tests use
+    synthetic paths that don't exist on disk, so make existence checks
+    pass by default; the dedicated "missing file" tests patch it to
+    ``False`` to override."""
+    with patch("kalimcp.run.Path.is_file", return_value=True):
+        yield
+
+
 def _fake_result(stdout: str = "ok") -> dict:
     return {
         "exit_code": 0,
@@ -253,7 +264,7 @@ async def test_gobuster_no_wordlist_returns_error_without_running():
 
 @pytest.mark.asyncio
 async def test_gobuster_explicit_wordlist_missing_returns_error():
-    with patch("kalimcp.tools.gobuster.Path.is_file", return_value=False), \
+    with patch("kalimcp.run.Path.is_file", return_value=False), \
          patch("kalimcp.tools.gobuster.run.run", new=AsyncMock()) as m:
         result = await gobuster.dir_scan(target="https://example.com/", wordlist="/nope")
     assert result["exit_code"] == -1
@@ -264,7 +275,7 @@ async def test_gobuster_explicit_wordlist_missing_returns_error():
 @pytest.mark.asyncio
 async def test_gobuster_threads_clamped():
     """threads should clamp to 1..50; values outside that range get pinned."""
-    with patch("kalimcp.tools.gobuster.Path.is_file", return_value=True), \
+    with patch("kalimcp.run.Path.is_file", return_value=True), \
          patch("kalimcp.tools.gobuster.run.run", new=AsyncMock(return_value=_fake_result())) as m:
         await gobuster.dir_scan(target="https://example.com/", wordlist="/x.txt", threads=999)
     argv = m.call_args.args[0]
@@ -274,7 +285,7 @@ async def test_gobuster_threads_clamped():
 
 @pytest.mark.asyncio
 async def test_gobuster_threads_clamped_low():
-    with patch("kalimcp.tools.gobuster.Path.is_file", return_value=True), \
+    with patch("kalimcp.run.Path.is_file", return_value=True), \
          patch("kalimcp.tools.gobuster.run.run", new=AsyncMock(return_value=_fake_result())) as m:
         await gobuster.dir_scan(target="https://example.com/", wordlist="/x.txt", threads=0)
     argv = m.call_args.args[0]
@@ -283,7 +294,7 @@ async def test_gobuster_threads_clamped_low():
 
 @pytest.mark.asyncio
 async def test_gobuster_argv_shape():
-    with patch("kalimcp.tools.gobuster.Path.is_file", return_value=True), \
+    with patch("kalimcp.run.Path.is_file", return_value=True), \
          patch("kalimcp.tools.gobuster.run.run", new=AsyncMock(return_value=_fake_result())) as m:
         await gobuster.dir_scan(target="https://example.com/", wordlist="/wl.txt", threads=8)
     argv = m.call_args.args[0]
@@ -316,7 +327,7 @@ by OJ Reeves (@TheColonial)
 @pytest.mark.asyncio
 async def test_gobuster_parsed_field_populated_on_success():
     fake = _fake_result(stdout=_GOBUSTER_OUTPUT_SAMPLE)
-    with patch("kalimcp.tools.gobuster.Path.is_file", return_value=True), \
+    with patch("kalimcp.run.Path.is_file", return_value=True), \
          patch("kalimcp.tools.gobuster.run.run", new=AsyncMock(return_value=fake)):
         result = await gobuster.dir_scan(target="https://example.com/", wordlist="/wl.txt")
     parsed = result["parsed"]
@@ -335,7 +346,7 @@ async def test_gobuster_parsed_field_populated_on_success():
 @pytest.mark.asyncio
 async def test_gobuster_parsed_field_empty_when_stdout_blank():
     fake = _fake_result(stdout="")
-    with patch("kalimcp.tools.gobuster.Path.is_file", return_value=True), \
+    with patch("kalimcp.run.Path.is_file", return_value=True), \
          patch("kalimcp.tools.gobuster.run.run", new=AsyncMock(return_value=fake)):
         result = await gobuster.dir_scan(target="https://example.com/", wordlist="/wl.txt")
     assert result["parsed"] == {"paths_found": []}
@@ -829,7 +840,7 @@ _FFUF_JSON_SAMPLE = """{
 
 @pytest.mark.asyncio
 async def test_ffuf_dir_argv_shape():
-    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+    with patch("kalimcp.run.Path.is_file", return_value=True), \
          patch("kalimcp.tools.ffuf.run.run", new=AsyncMock(return_value=_fake_result())) as m:
         await ffuf.fuzz(target="https://example.com/FUZZ", wordlist="/wl.txt")
     argv = m.call_args.args[0]
@@ -843,7 +854,7 @@ async def test_ffuf_dir_argv_shape():
 
 @pytest.mark.asyncio
 async def test_ffuf_vhost_mode_uses_host_header():
-    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+    with patch("kalimcp.run.Path.is_file", return_value=True), \
          patch("kalimcp.tools.ffuf.run.run", new=AsyncMock(return_value=_fake_result())) as m:
         await ffuf.fuzz(
             target="https://example.com/",
@@ -858,7 +869,7 @@ async def test_ffuf_vhost_mode_uses_host_header():
 
 @pytest.mark.asyncio
 async def test_ffuf_threads_clamped():
-    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+    with patch("kalimcp.run.Path.is_file", return_value=True), \
          patch("kalimcp.tools.ffuf.run.run", new=AsyncMock(return_value=_fake_result())) as m:
         await ffuf.fuzz(target="https://example.com/FUZZ", wordlist="/wl.txt", threads=9999)
     argv = m.call_args.args[0]
@@ -867,7 +878,7 @@ async def test_ffuf_threads_clamped():
 
 @pytest.mark.asyncio
 async def test_ffuf_unknown_mode_returns_error_without_running():
-    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+    with patch("kalimcp.run.Path.is_file", return_value=True), \
          patch("kalimcp.tools.ffuf.run.run", new=AsyncMock()) as m:
         result = await ffuf.fuzz(target="https://example.com/FUZZ", mode="bogus", wordlist="/wl.txt")
     m.assert_not_called()
@@ -887,7 +898,7 @@ async def test_ffuf_no_wordlist_returns_error_with_parsed():
 @pytest.mark.asyncio
 async def test_ffuf_parsed_field_populated_on_success():
     fake = _fake_result(stdout=_FFUF_JSON_SAMPLE)
-    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+    with patch("kalimcp.run.Path.is_file", return_value=True), \
          patch("kalimcp.tools.ffuf.run.run", new=AsyncMock(return_value=fake)):
         result = await ffuf.fuzz(target="https://example.com/FUZZ", wordlist="/wl.txt")
     parsed = result["parsed"]
@@ -904,7 +915,7 @@ async def test_ffuf_parsed_field_populated_on_success():
 @pytest.mark.asyncio
 async def test_ffuf_parsed_field_empty_on_malformed_json():
     fake = _fake_result(stdout="not actually json")
-    with patch("kalimcp.tools.ffuf.Path.is_file", return_value=True), \
+    with patch("kalimcp.run.Path.is_file", return_value=True), \
          patch("kalimcp.tools.ffuf.run.run", new=AsyncMock(return_value=fake)):
         result = await ffuf.fuzz(target="https://example.com/FUZZ", wordlist="/wl.txt")
     assert result["parsed"] == {"results": []}
@@ -1325,6 +1336,37 @@ bob:s3cret:1002:1002::/home/bob:/bin/bash
 
 2 password hashes cracked, 1 left
 """
+
+
+@pytest.mark.asyncio
+async def test_john_missing_hashfile_returns_error_without_running():
+    """A hashfile that doesn't exist is rejected at the choke point."""
+    with patch("kalimcp.run.Path.is_file", return_value=False), \
+         patch("kalimcp.tools.john.run.run", new=AsyncMock()) as m:
+        result = await john.crack(target="/nope/hashes.txt", wordlist="/wl.txt")
+    assert "hashfile not found" in result["stderr"]
+    m.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_hashcat_missing_wordlist_returns_error_without_running():
+    with patch("kalimcp.run.Path.is_file", side_effect=[True, False]), \
+         patch("kalimcp.tools.hashcat.run.run", new=AsyncMock()) as m:
+        result = await hashcat.crack(target="/loot/h.txt", mode=1000, wordlist="/nope")
+    assert "wordlist not found" in result["stderr"]
+    m.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_hydra_missing_password_list_returns_error_without_running():
+    with patch("kalimcp.run.Path.is_file", return_value=False), \
+         patch("kalimcp.tools.hydra.run.run", new=AsyncMock()) as m:
+        result = await hydra.crack(
+            target="192.168.1.10", service="ssh",
+            password_list="/nope/pw.txt",
+        )
+    assert "password_list not found" in result["stderr"]
+    m.assert_not_called()
 
 
 @pytest.mark.asyncio

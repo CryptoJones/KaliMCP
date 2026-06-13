@@ -105,8 +105,8 @@ async def dir_scan(
             "wordlists (apt install wordlists seclists).",
             parsed=_empty_parsed(),
         )
-    if not Path(wl).is_file():
-        return run.error_result(f"wordlist not found: {wl}", parsed=_empty_parsed())
+    if err := run.validate_file(wl, "wordlist", parsed=_empty_parsed()):
+        return err
     threads = max(1, min(int(threads), 50))
     argv = [
         "gobuster", "dir",

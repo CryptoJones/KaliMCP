@@ -85,7 +85,13 @@ def engagement_dir(name: str | None = None) -> Path:
 def _sanitize_name(name: str) -> str:
     """Restrict engagement names to a safe filename charset."""
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
-    return safe or DEFAULT_ENGAGEMENT
+    # The charset allows '.', so '..' (and '.') survive the regex unchanged
+    # and would resolve *outside* the engagements root — single-segment path
+    # traversal. A name that is nothing but dots is a traversal token, not a
+    # name; collapse it (and the empty case) to the default.
+    if not safe or set(safe) <= {"."}:
+        return DEFAULT_ENGAGEMENT
+    return safe
 
 
 def _now() -> str:
@@ -468,9 +474,20 @@ def _extract_host(target: str) -> str:
             return urllib.parse.urlparse(target).hostname or ""
         except ValueError:
             return ""
+    # Bracketed IPv6, with or without a port: [::1] / [2001:db8::1]:8080.
+    # Without this the multi-colon literal falls through to the bare return
+    # below and `ip_address()` later chokes on the brackets+port, so the
+    # scope warning silently never fires for IPv6 targets.
+    if target.startswith("["):
+        end = target.find("]")
+        if end != -1:
+            return target[1:end]
+    # Strip a trailing path (host/rest), but not an absolute filesystem path.
     if "/" in target and not target.startswith("/"):
-        return target.split("/", 1)[0]
-    if ":" in target and target.count(":") == 1:
+        target = target.split("/", 1)[0]
+    # host:port — only strip when there's exactly one colon, so a bare
+    # (unbracketed) IPv6 literal like ::1 is left intact for ip_address().
+    if target.count(":") == 1:
         return target.split(":", 1)[0]
     return target
 

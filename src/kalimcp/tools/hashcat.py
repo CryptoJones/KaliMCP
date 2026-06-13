@@ -68,6 +68,11 @@ async def crack(
     with ``parsed``: ``{cracked: [{hash, password}], mode,
     remaining, total_hashes}``.
     """
+    if err := run.validate_file(target, "hashfile", parsed=_empty_parsed()):
+        return err
+    if err := run.validate_file(wordlist, "wordlist", parsed=_empty_parsed()):
+        return err
+
     argv = [
         "hashcat",
         f"-m={int(mode)}",

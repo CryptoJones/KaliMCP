@@ -24,6 +24,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   via `os.open(..., 0o600)`, and `configure()` tightens the mode of any
   pre-existing log file on first resolve. The `_writable` probe uses the
   same restricted open so it can't create a loose file first.
+- **File-path arguments validated at one shared choke point (#9, Theme A).**
+  Added `run.validate_file()` — an existence/type check that returns a clean
+  structured error for a missing or non-regular file. The credential and
+  cracking wrappers (hydra `-L`/`-P`, john hashfile + wordlist, hashcat
+  hashfile + wordlist) previously passed any agent-supplied path straight to
+  the tool while only ffuf/gobuster hand-rolled the check; all five now route
+  through the helper, so a new wrapper can't silently omit it. This is
+  existence validation, not a path allowlist — consistent with the
+  no-authorization-gate design rule.
+- **Engagement-name `..` path traversal closed (#9, Theme C).** The name
+  sanitizer's charset allows `.`, so `_sanitize_name("..")` returned `".."`
+  unchanged and `engagement_dir("..")` / `store_loot(blob_name="..")`
+  resolved a directory *above* the engagements root. Names that are nothing
+  but dots now collapse to the default engagement.
+- **IPv6 scope matching fixed (#9, Theme C).** `_extract_host()` only
+  stripped a port when the target had exactly one colon, so a bracketed
+  literal like `[::1]:8080` fell through unparsed and the out-of-scope
+  warning silently never fired for IPv6 targets. Bracketed IPv6 (with or
+  without a port) is now parsed to the bare address.
 
 ### Fixed
 

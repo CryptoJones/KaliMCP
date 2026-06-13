@@ -140,6 +140,24 @@ async def crack(
     user_wl = username_list or profile_cfg["wordlist"]
     pass_wl = password_list or profile_cfg["wordlist"]
 
+    def _empty() -> dict[str, Any]:
+        return {
+            "success": False,
+            "credentials_found": [],
+            "tried_combinations": 0,
+            "hosts_tested": [],
+            "services_tested": [],
+            "statistics": {},
+        }
+
+    # Validate any caller-supplied list file up front (shared choke point).
+    # Profile-default wordlists live on the Kali image and aren't checked
+    # here so a dev box without them still builds the same argv.
+    if username_list and (err := run.validate_file(username_list, "username_list", parsed=_empty())):
+        return err
+    if password_list and (err := run.validate_file(password_list, "password_list", parsed=_empty())):
+        return err
+
     argv: list[str] = ["hydra"]
     if user_wl:
         argv.extend(["-L", user_wl])
