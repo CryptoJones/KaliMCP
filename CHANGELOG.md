@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — tools
+
+- **Five new wrappers (#22).** `traceroute_path` (network path discovery,
+  active — scope warning applies) plus four read-only loot-triage tools that
+  analyze a file already on disk: `tshark_pcap` (capture analysis — modes
+  `summary`/`http`/`protocol_hierarchy`/`conversations`/`expert`; read-only,
+  live capture is deliberately not exposed), `strings_extract`, `nm_symbols`
+  (optional demangle/dynamic), and `objdump_inspect` (`headers`/`sections`/
+  `symbols`/`disasm`). The triage tools are non-probing, so they audit as
+  `passive_invoke`; file paths route through `run.validate_file` and binutils
+  get a `--` terminator so a dash-leading filename can't be read as a flag.
+  Dockerfile gains `tshark`, `binutils`, `traceroute`.
+
 ### Security
 
 - **Audit-log secret redaction is now fail-closed (#8).** `redact_argv`

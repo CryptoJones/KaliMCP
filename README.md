@@ -71,6 +71,7 @@ clients):
 | `smb_enum` | `enum4linux-ng` | SMB shares / users / groups / OS / signing |
 | `snmp_enum` | `snmp-check` | SNMP enumeration (hostname / contact / processes / software) |
 | `ldap_enum` | `ldapsearch` | anonymous LDAP rootDSE query (naming contexts / vendor) |
+| `traceroute_path` | `traceroute` | network path discovery (`-n`, no DNS) |
 
 **Auth & credentials**
 
@@ -121,6 +122,15 @@ blocking `warning: "out_of_scope"` in the result + an audit event.
 | `searchsploit_search` | `searchsploit` | local Exploit-DB grep |
 | `cert_dump` | `openssl s_client` | TLS cert chain inspection |
 
+**Loot triage** (read-only analysis of a file already on disk)
+
+| Tool | Wraps | Purpose |
+|------|-------|---------|
+| `tshark_pcap` | `tshark` | capture analysis (summary / http / protocol hierarchy / conversations / expert) |
+| `strings_extract` | `strings` | printable strings from a binary |
+| `nm_symbols` | `nm` | symbol table (optional demangle / dynamic) |
+| `objdump_inspect` | `objdump` | headers / sections / symbols / disassembly |
+
 ---
 
 ## Install
@@ -142,7 +152,8 @@ wrapped tool set alongside the Python package:
   hashcat
 - **Windows AD post-exploit**: impacket-scripts, metasploit-framework
   (only `msfvenom` is wired — see below)
-- **passive**: whois, dnsutils, exploitdb, openssl
+- **passive / triage**: whois, dnsutils, exploitdb, openssl, tshark,
+  binutils (strings/nm/objdump), traceroute
 - **wordlists**: wordlists, seclists
 
 ### Bare metal (Kali Linux only — needs the tools installed already)

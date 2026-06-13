@@ -35,6 +35,7 @@ from kalimcp.tools import (
     snmp,
     sqlmap,
     sslscan,
+    traceroute,
     whatweb,
     winrm,
 )
@@ -510,6 +511,130 @@ async def test_passive_cert_dump_argv():
     assert "-servername" in argv and argv[argv.index("-servername") + 1] == "example.com"
     # stdin=b"" is passed via kwargs
     assert m.call_args.kwargs.get("stdin") == b""
+
+
+# ---------- loot triage: tshark / strings / nm / objdump (#22) ----------
+
+
+@pytest.mark.asyncio
+async def test_tshark_summary_argv():
+    with patch("kalimcp.tools.passive.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await passive.tshark_pcap(pcap="/loot/cap.pcap")
+    assert m.call_args.args[0] == ["tshark", "-r", "/loot/cap.pcap"]
+
+
+@pytest.mark.asyncio
+async def test_tshark_http_mode_argv():
+    with patch("kalimcp.tools.passive.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await passive.tshark_pcap(pcap="/loot/cap.pcap", mode="http")
+    argv = m.call_args.args[0]
+    assert argv[:3] == ["tshark", "-r", "/loot/cap.pcap"]
+    assert "-Y" in argv and argv[argv.index("-Y") + 1] == "http"
+    assert "-T" in argv and "fields" in argv
+
+
+@pytest.mark.asyncio
+async def test_tshark_phs_mode_uses_z_stat():
+    with patch("kalimcp.tools.passive.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await passive.tshark_pcap(pcap="/loot/cap.pcap", mode="protocol_hierarchy")
+    argv = m.call_args.args[0]
+    assert "-z" in argv and argv[argv.index("-z") + 1] == "io,phs"
+
+
+@pytest.mark.asyncio
+async def test_tshark_custom_filter_overrides_default():
+    with patch("kalimcp.tools.passive.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await passive.tshark_pcap(pcap="/loot/cap.pcap", mode="http", display_filter="dns")
+    argv = m.call_args.args[0]
+    assert argv[argv.index("-Y") + 1] == "dns"
+
+
+@pytest.mark.asyncio
+async def test_tshark_unknown_mode_errors_without_running():
+    with patch("kalimcp.tools.passive.run.run", new=AsyncMock()) as m:
+        result = await passive.tshark_pcap(pcap="/loot/cap.pcap", mode="bogus")
+    m.assert_not_called()
+    assert "unknown mode" in result["stderr"]
+
+
+@pytest.mark.asyncio
+async def test_tshark_missing_pcap_errors():
+    with patch("kalimcp.run.Path.is_file", return_value=False), \
+            patch("kalimcp.tools.passive.run.run", new=AsyncMock()) as m:
+        result = await passive.tshark_pcap(pcap="/nope.pcap")
+    m.assert_not_called()
+    assert result["exit_code"] == -1
+
+
+@pytest.mark.asyncio
+async def test_strings_argv():
+    with patch("kalimcp.tools.passive.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await passive.strings_extract(path="/loot/bin", min_length=6, encoding="l")
+    assert m.call_args.args[0] == ["strings", "-n", "6", "-e", "l", "--", "/loot/bin"]
+
+
+@pytest.mark.asyncio
+async def test_strings_bad_encoding_falls_back():
+    with patch("kalimcp.tools.passive.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await passive.strings_extract(path="/loot/bin", encoding="zzz")
+    argv = m.call_args.args[0]
+    assert argv[argv.index("-e") + 1] == "s"
+
+
+@pytest.mark.asyncio
+async def test_nm_argv_demangle_default():
+    with patch("kalimcp.tools.passive.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await passive.nm_symbols(path="/loot/bin")
+    assert m.call_args.args[0] == ["nm", "--demangle", "--", "/loot/bin"]
+
+
+@pytest.mark.asyncio
+async def test_nm_argv_dynamic_no_demangle():
+    with patch("kalimcp.tools.passive.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await passive.nm_symbols(path="/loot/bin", demangle=False, dynamic=True)
+    assert m.call_args.args[0] == ["nm", "--dynamic", "--", "/loot/bin"]
+
+
+@pytest.mark.asyncio
+async def test_objdump_argv_modes():
+    with patch("kalimcp.tools.passive.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await passive.objdump_inspect(path="/loot/bin", mode="disasm")
+    assert m.call_args.args[0] == ["objdump", "-d", "--", "/loot/bin"]
+
+
+@pytest.mark.asyncio
+async def test_objdump_unknown_mode_errors():
+    with patch("kalimcp.tools.passive.run.run", new=AsyncMock()) as m:
+        result = await passive.objdump_inspect(path="/loot/bin", mode="bogus")
+    m.assert_not_called()
+    assert "unknown mode" in result["stderr"]
+
+
+# ---------- traceroute (#22, active) ----------
+
+
+@pytest.mark.asyncio
+async def test_traceroute_argv():
+    with patch("kalimcp.tools.traceroute.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await traceroute.trace(target="10.0.0.1", max_hops=20, wait_seconds=3)
+    assert m.call_args.args[0] == ["traceroute", "-n", "-m", "20", "-w", "3", "10.0.0.1"]
+
+
+@pytest.mark.asyncio
+async def test_traceroute_clamps_hops_and_wait():
+    with patch("kalimcp.tools.traceroute.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await traceroute.trace(target="10.0.0.1", max_hops=999, wait_seconds=999)
+    argv = m.call_args.args[0]
+    assert argv[argv.index("-m") + 1] == "64"
+    assert argv[argv.index("-w") + 1] == "10"
+
+
+@pytest.mark.asyncio
+async def test_traceroute_dash_target_rejected():
+    with patch("kalimcp.tools.traceroute.run.run", new=AsyncMock()) as m:
+        result = await traceroute.trace(target="-i eth0")
+    m.assert_not_called()
+    assert result["exit_code"] == -1
 
 
 # ---------- sqlmap ----------
