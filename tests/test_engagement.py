@@ -219,7 +219,75 @@ def test_loot_list_enumerates(workspace):
     workspace.write_loot("b.txt", "BB")
     items = workspace.list_loot()
     names = {i["name"] for i in items}
+    # The .manifest.json sidecar is excluded from the listing.
     assert names == {"a.txt", "b.txt"}
+
+
+# ---------- loot checksum + 0600 (#20) ----------
+
+import hashlib  # noqa: E402
+
+
+def test_loot_write_records_sha256_and_0600(workspace):
+    workspace.create("op")
+    workspace.use("op")
+    write = workspace.write_loot("ntds.txt", "alice:hash\n")
+    assert write["sha256"] == hashlib.sha256(b"alice:hash\n").hexdigest()
+    p = workspace.engagement_dir("op") / "loot" / "ntds.txt"
+    assert p.stat().st_mode & 0o777 == 0o600
+    # Manifest also exists and is 0600.
+    manifest = workspace.engagement_dir("op") / "loot" / ".manifest.json"
+    assert manifest.stat().st_mode & 0o777 == 0o600
+
+
+def test_loot_read_reports_verified(workspace):
+    workspace.create("op")
+    workspace.use("op")
+    workspace.write_loot("blob.txt", "data")
+    read = workspace.read_loot("blob.txt")
+    assert read["sha256"] == hashlib.sha256(b"data").hexdigest()
+    assert read["verified"] is True
+
+
+def test_loot_verify_matches_manifest(workspace):
+    workspace.create("op")
+    workspace.use("op")
+    workspace.write_loot("blob.txt", "data")
+    res = workspace.verify_loot("blob.txt")
+    assert res["ok"] is True
+    assert res["verified"] is True
+    assert res["compared_against"] == "manifest"
+
+
+def test_loot_verify_detects_tampering(workspace):
+    workspace.create("op")
+    workspace.use("op")
+    workspace.write_loot("blob.txt", "data")
+    # Tamper with the on-disk blob behind the manifest's back.
+    p = workspace.engagement_dir("op") / "loot" / "blob.txt"
+    p.write_text("evil", encoding="utf-8")
+    res = workspace.verify_loot("blob.txt")
+    assert res["verified"] is False
+    read = workspace.read_loot("blob.txt")
+    assert read["verified"] is False
+
+
+def test_loot_verify_against_expected_hash(workspace):
+    workspace.create("op")
+    workspace.use("op")
+    workspace.write_loot("blob.txt", "data")
+    good = hashlib.sha256(b"data").hexdigest()
+    assert workspace.verify_loot("blob.txt", good)["verified"] is True
+    assert workspace.verify_loot("blob.txt", "deadbeef")["verified"] is False
+    assert workspace.verify_loot("blob.txt", good)["compared_against"] == "expected"
+
+
+def test_loot_verify_missing_blob(workspace):
+    workspace.create("op")
+    workspace.use("op")
+    res = workspace.verify_loot("nope.txt")
+    assert res["ok"] is False
+    assert res["error"] == "not_found"
 
 
 # ---------- notes + status ----------

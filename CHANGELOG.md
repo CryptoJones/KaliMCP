@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Checksum-verified loot transfer, blobs written 0600 (#20).** `write_loot`
+  now writes each blob owner-only (was default umask) and records its SHA-256
+  + size in a per-engagement manifest (`loot/.manifest.json`, also 0600),
+  returning the hash. `read_loot` and `list_loot` surface the hash and a
+  `verified` flag (does the blob still match what was written?), and a new
+  `loot_verify` tool recomputes the SHA-256 and compares it to a caller-
+  supplied `expected_sha256` (e.g. from the source host) or to the recorded
+  hash — so an operator can confirm loot transferred off the box intact and
+  detect on-disk tampering. A tampered, truncated, or reference-less blob is
+  never reported as verified.
+
 - **Audit-log secret redaction is now fail-closed (#8).** `redact_argv`
   previously only redacted a secret when it was a standalone token
   immediately after an exact-match secret flag, so two common shapes

@@ -57,6 +57,7 @@ EXPECTED_TOOLS = {
     "loot_write",
     "loot_list",
     "loot_read",
+    "loot_verify",
     "note_append",
     "wordlist_list",
 }
