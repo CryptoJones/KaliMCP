@@ -44,6 +44,37 @@ async def test_wrapped_exception_returned_as_structured_error():
 
 
 @pytest.mark.asyncio
+async def test_exception_message_redacts_secret_kwarg(tmp_path, monkeypatch):
+    """A secret kwarg quoted in an exception must not leak to client or log.
+
+    #8 redacted the logged argv; #15 closes the second sink — the
+    tool_exception ``message`` returned to the client and written to
+    the audit log.
+    """
+    from kalimcp import audit
+
+    log_path = tmp_path / "audit.log"
+    monkeypatch.setenv("KALIMCP_LOG_FILE", str(log_path))
+    audit.configure()
+
+    @active_tool("leaky-tool")
+    async def leaky(target: str, **kwargs):
+        # Simulate a tool/library raising with the secret in its text.
+        raise RuntimeError(f"auth to {target} failed for password={kwargs['password']}")
+
+    result = await leaky(target="dc.corp", password="hunter2")
+    audit.reset_for_test()
+
+    assert result["ok"] is False
+    assert "hunter2" not in result["message"]
+    assert "sha256:" in result["message"]
+
+    raw = log_path.read_text(encoding="utf-8")
+    assert "hunter2" not in raw
+    assert "tool_exception" in raw
+
+
+@pytest.mark.asyncio
 async def test_audit_log_includes_argv_on_invoke(tmp_path, monkeypatch):
     """tool_invoke events should carry the argv from the wrapped run() result."""
     from kalimcp import audit

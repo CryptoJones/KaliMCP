@@ -180,6 +180,28 @@ def _hash8(value: str) -> str:
     return f"sha256:{digest}"
 
 
+def redact_text(text: str, secret_values: Iterable[str] | None) -> str:
+    """Replace every secret-value substring in ``text`` with ``sha256:<8hex>``.
+
+    The by-value sibling of :func:`redact_argv`, for the *string* sinks
+    that also reach the client or the log: a ``tool_exception`` message
+    (which may quote argv, a failing path, or a tool's own error text).
+    #8 redacted the logged ``argv`` array; this closes the second sink
+    so a credential kwarg can't surface in plaintext through an
+    exception either. No-op when ``text`` or ``secret_values`` is empty.
+    """
+    if not text or not secret_values:
+        return text
+    values = sorted(
+        {v for v in secret_values if v and len(v) >= _MIN_REDACTABLE_VALUE},
+        key=len,
+        reverse=True,
+    )
+    for v in values:
+        text = text.replace(v, _hash8(v))
+    return text
+
+
 def redact_argv(
     argv: list[str],
     secret_flags: Iterable[str] | None,
