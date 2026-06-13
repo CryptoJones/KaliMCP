@@ -37,7 +37,7 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 
-from . import audit, engagement
+from . import audit, engagement, process_registry
 from .tools import (
     ffuf,
     gobuster,
@@ -699,6 +699,36 @@ async def note_append(text: str) -> dict:
 async def wordlist_list() -> dict:
     """Enumerate wordlists under /usr/share/wordlists + /usr/share/seclists."""
     return {"wordlists": engagement.list_wordlists()}
+
+
+# ---------- process control ----------
+# Live view + kill switch for running tool subprocesses, so a runaway scan
+# can be stopped without killing the MCP session (issue #13). The listing is
+# secret-free (binary + arg count only); kill refuses any PID we didn't
+# launch.
+
+@mcp.tool()
+async def process_list() -> dict:
+    """List tool subprocesses currently running.
+
+    Each entry: `pid`, `binary`, `argc` (argv length — the argv itself is
+    withheld so a password on a command line can't leak), `elapsed_s`,
+    `timeout_s`, and the `engagement` active when it launched.
+    """
+    return {"processes": process_registry.snapshot()}
+
+
+@mcp.tool()
+async def process_kill(pid: int, force: bool = False) -> dict:
+    """Stop a running tool subprocess by PID (from `process_list`).
+
+    Sends SIGTERM, or SIGKILL when `force=True`, to the process group.
+    Only PIDs KaliMCP launched can be killed; anything else is refused.
+    """
+    import signal as _signal
+    result = process_registry.kill(pid, sig=_signal.SIGKILL if force else _signal.SIGTERM)
+    audit.log("process_kill", pid=pid, force=force, ok=result.get("ok", False))
+    return result
 
 
 def main() -> int:

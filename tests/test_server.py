@@ -59,6 +59,8 @@ EXPECTED_TOOLS = {
     "loot_read",
     "note_append",
     "wordlist_list",
+    "process_list",
+    "process_kill",
 }
 
 

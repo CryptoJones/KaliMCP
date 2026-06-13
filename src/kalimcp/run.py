@@ -24,12 +24,44 @@ import signal
 from pathlib import Path
 from typing import Any
 
+from . import engagement, process_registry
+
 DEFAULT_TIMEOUT_SECONDS = 300
 MAX_OUTPUT_BYTES = 2 * 1024 * 1024  # 2 MB combined
+
+# Cap on subprocesses running at once, so an agent fanning out a dozen
+# scans in parallel can't exhaust host CPU / file descriptors (issue #13).
+# Override with KALIMCP_MAX_CONCURRENCY. Calls past the cap wait their turn.
+DEFAULT_MAX_CONCURRENCY = 8
+
+# One semaphore per event loop — an asyncio primitive bound to loop A
+# raises if awaited from loop B (each test gets its own loop), so we key
+# by the running loop instead of caching a single global.
+_semaphores: dict[Any, asyncio.Semaphore] = {}
 
 
 class ToolNotInstalled(RuntimeError):
     """The wrapped binary isn't on PATH."""
+
+
+def _max_concurrency() -> int:
+    raw = os.environ.get("KALIMCP_MAX_CONCURRENCY")
+    if raw and raw.isdigit() and int(raw) > 0:
+        return int(raw)
+    return DEFAULT_MAX_CONCURRENCY
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    sem = _semaphores.get(loop)
+    if sem is None:
+        sem = asyncio.Semaphore(_max_concurrency())
+        _semaphores[loop] = sem
+    return sem
+
+
+def reset_concurrency_for_test() -> None:
+    _semaphores.clear()
 
 
 def _kill_group(proc: asyncio.subprocess.Process) -> None:
@@ -76,39 +108,53 @@ async def run(
 
     t = timeout if timeout is not None else DEFAULT_TIMEOUT_SECONDS
 
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
-        )
-    except FileNotFoundError as exc:
-        raise ToolNotInstalled(
-            f"binary not found: {argv[0]} — install it or run KaliMCP inside the "
-            "Dockerfile-provided Kali image"
-        ) from exc
-
-    loop = asyncio.get_running_loop()
-    start = loop.time()
-    timed_out = False
-    try:
+    # Hold a concurrency slot for the whole lifetime of the subprocess, so
+    # the cap reflects processes actually running, not just being launched.
+    async with _get_semaphore():
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(input=stdin), timeout=t)
-        except TimeoutError:
-            timed_out = True
-            _kill_group(proc)
+            proc = await asyncio.create_subprocess_exec(
+                *argv,
+                stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
+            )
+        except FileNotFoundError as exc:
+            raise ToolNotInstalled(
+                f"binary not found: {argv[0]} — install it or run KaliMCP inside the "
+                "Dockerfile-provided Kali image"
+            ) from exc
+
+        # Track the live process so process_list / process_kill can see and
+        # stop it. current_engagement() is best-effort metadata only.
+        try:
+            current = engagement.current_engagement()
+        except Exception:
+            current = ""
+        process_registry.register(proc.pid, argv, timeout=t, engagement=current)
+
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        timed_out = False
+        try:
             try:
-                stdout_b, stderr_b = await proc.communicate()
-            except Exception:
-                stdout_b, stderr_b = b"", b""
-    finally:
-        # If the tool is still running as we leave — the surrounding task was
-        # cancelled because the MCP server is shutting down or the client
-        # disconnected — kill the whole group so a scan can't outlive the
-        # session as an orphan.
-        _kill_group(proc)
+                stdout_b, stderr_b = await asyncio.wait_for(
+                    proc.communicate(input=stdin), timeout=t
+                )
+            except TimeoutError:
+                timed_out = True
+                _kill_group(proc)
+                try:
+                    stdout_b, stderr_b = await proc.communicate()
+                except Exception:
+                    stdout_b, stderr_b = b"", b""
+        finally:
+            # If the tool is still running as we leave — the surrounding task
+            # was cancelled because the MCP server is shutting down or the
+            # client disconnected — kill the whole group so a scan can't
+            # outlive the session as an orphan.
+            _kill_group(proc)
+            process_registry.unregister(proc.pid)
 
     elapsed = loop.time() - start
 

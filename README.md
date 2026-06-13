@@ -105,12 +105,20 @@ clients):
 | `loot_write` / `loot_list` / `loot_read` | extracted blob store |
 | `note_append` | operator free-form notes.md |
 | `wordlist_list` | enumerate wordlists under `/usr/share/wordlists` + seclists |
+| `process_list` | list running tool subprocesses (PID, binary, elapsed) |
+| `process_kill` | stop a runaway scan by PID (SIGTERM, or SIGKILL with `force`) |
 
 Set `KALIMCP_AUTORECORD=1` to have active-scan tools mirror their
 parsed findings into the active engagement automatically (nmap →
 findings, hydra/netexec → creds, etc.). If the active engagement
 has a `scope` list, calls to out-of-scope targets get a non-
 blocking `warning: "out_of_scope"` in the result + an audit event.
+
+At most `KALIMCP_MAX_CONCURRENCY` tool subprocesses run at once
+(default 8); extra calls queue. Each call still carries its own
+wall-clock timeout and a 2 MB output cap. Use `process_list` /
+`process_kill` to inspect and stop long-running scans without
+tearing down the session.
 
 **Passive lookups**
 
