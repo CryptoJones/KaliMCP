@@ -123,6 +123,34 @@ def test_record_and_query_findings_roundtrip(workspace):
     assert cats == {"host", "subdomain"}
 
 
+def test_evidence_advisory_fires_for_bare_claim(workspace):
+    # No source_tool, empty payload -> advisory.
+    msg = workspace.evidence_advisory({}, "")
+    assert msg is not None
+    assert "without evidence" in msg
+    assert workspace.evidence_advisory(None, "") is not None
+
+
+def test_evidence_advisory_silent_with_source_tool(workspace):
+    assert workspace.evidence_advisory({}, "nmap") is None
+
+
+def test_evidence_advisory_silent_with_evidence_field(workspace):
+    assert workspace.evidence_advisory({"evidence": "GET / 200 banner=nginx"}, "") is None
+    assert workspace.evidence_advisory({"loot": "ntds.txt"}, "") is None
+    assert workspace.evidence_advisory({"ports": [22, 80]}, "") is None
+    # An empty evidence value does not count.
+    assert workspace.evidence_advisory({"evidence": ""}, "") is not None
+
+
+def test_record_finding_still_writes_despite_advisory(workspace):
+    """The advisory is non-blocking — the finding is recorded regardless."""
+    workspace.create("op")
+    workspace.use("op")
+    assert workspace.record_finding("sqli", "10.0.0.5", {}) is True
+    assert len(workspace.query_findings()) == 1
+
+
 def test_query_findings_filters_by_category(workspace):
     workspace.create("op")
     workspace.use("op")
