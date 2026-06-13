@@ -44,6 +44,9 @@ EXPECTED_TOOLS = {
     "dig_record",
     "searchsploit_search",
     "cert_dump",
+    "cve_search",
+    "cve_package_audit",
+    "hash_identify",
     # Engagement workspace
     "engagement_create",
     "engagement_list",
