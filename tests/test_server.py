@@ -58,6 +58,7 @@ EXPECTED_TOOLS = {
     "loot_list",
     "loot_read",
     "note_append",
+    "report_export",
     "wordlist_list",
 }
 

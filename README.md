@@ -104,6 +104,7 @@ clients):
 | `cred_record` / `cred_query` | credential cache (file mode 0600) |
 | `loot_write` / `loot_list` / `loot_read` | extracted blob store |
 | `note_append` | operator free-form notes.md |
+| `report_export` | export findings as Markdown / SARIF / JUnit (secrets masked) |
 | `wordlist_list` | enumerate wordlists under `/usr/share/wordlists` + seclists |
 
 Set `KALIMCP_AUTORECORD=1` to have active-scan tools mirror their

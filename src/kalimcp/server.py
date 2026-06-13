@@ -37,7 +37,7 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 
-from . import audit, engagement
+from . import audit, engagement, report
 from .tools import (
     ffuf,
     gobuster,
@@ -693,6 +693,18 @@ async def note_append(text: str) -> dict:
     """Append a timestamped block to the engagement's notes.md."""
     ok = engagement.note_append(text)
     return {"ok": ok}
+
+
+@mcp.tool()
+async def report_export(format: str = "markdown") -> dict:
+    """Export the active engagement's findings store as a report.
+
+    `format`: `markdown` (human report), `sarif` (SARIF v2.1.0 for GitHub
+    Code Scanning), or `junit` (JUnit XML — error-severity findings become
+    `<failure>` so CI goes red). Credential secrets are masked. Returns
+    `content`; pass it to `loot_write` to save it.
+    """
+    return report.generate(format)
 
 
 @mcp.tool()
