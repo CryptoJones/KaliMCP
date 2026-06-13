@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — tools
+
+- **`health_check` capability probe (#19).** Reports which of the wrapped
+  binaries are present on PATH (pure `shutil.which`, no subprocess) so the
+  agent can degrade gracefully instead of hitting `ToolNotInstalled`
+  mid-scan. `check_versions=true` additionally probes each present binary
+  for a version string (one short subprocess per tool, opt-in).
+
+### Changed
+
+- **Tool timeouts now return the partial output captured so far (#19).**
+  `run.run` drains stdout/stderr incrementally instead of via a single
+  `communicate()`, so a scan that times out mid-run yields what it printed
+  before the deadline rather than discarding it. The result keeps the
+  distinct `timed_out` flag and adds `partial` (true when a timeout left
+  real-but-incomplete output) — a timed-out scan is never reported as a
+  clean success. The 2 MB output cap and process-group kill-on-timeout /
+  kill-on-cancel behavior are preserved.
+
 ### Security
 
 - **Audit-log secret redaction is now fail-closed (#8).** `redact_argv`

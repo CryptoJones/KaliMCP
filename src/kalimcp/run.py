@@ -92,33 +92,77 @@ async def run(
 
     loop = asyncio.get_running_loop()
     start = loop.time()
+
+    # Drain stdout/stderr incrementally into capped buffers. Reading as the
+    # tool runs (rather than a single communicate() at the end) means a
+    # timeout still yields the partial output captured so far instead of
+    # discarding it (issue #19). Each buffer stops growing at
+    # MAX_OUTPUT_BYTES, but the reader keeps draining so a full pipe can't
+    # deadlock the child.
+    stdout_buf = bytearray()
+    stderr_buf = bytearray()
+    truncated = False
+
+    async def _drain(stream: asyncio.StreamReader | None, buf: bytearray) -> None:
+        nonlocal truncated
+        if stream is None:
+            return
+        while True:
+            chunk = await stream.read(65536)
+            if not chunk:
+                break
+            room = MAX_OUTPUT_BYTES - len(buf)
+            if room > 0:
+                buf += chunk[:room]
+            if len(chunk) > room:
+                truncated = True
+
+    async def _feed() -> None:
+        if stdin is None or proc.stdin is None:
+            return
+        try:
+            proc.stdin.write(stdin)
+            await proc.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            try:
+                proc.stdin.close()
+            except Exception:
+                pass
+
+    drain_tasks = [
+        asyncio.ensure_future(_drain(proc.stdout, stdout_buf)),
+        asyncio.ensure_future(_drain(proc.stderr, stderr_buf)),
+        asyncio.ensure_future(_feed()),
+    ]
     timed_out = False
     try:
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(input=stdin), timeout=t)
+            await asyncio.wait_for(proc.wait(), timeout=t)
         except TimeoutError:
             timed_out = True
             _kill_group(proc)
-            try:
-                stdout_b, stderr_b = await proc.communicate()
-            except Exception:
-                stdout_b, stderr_b = b"", b""
+        # Now the process has exited or been killed (kill EOFs the pipes,
+        # so the drains finish): collect whatever they hold/can still read.
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*drain_tasks, return_exceptions=True), timeout=5.0
+            )
+        except TimeoutError:
+            for tk in drain_tasks:
+                tk.cancel()
     finally:
-        # If the tool is still running as we leave — the surrounding task was
-        # cancelled because the MCP server is shutting down or the client
-        # disconnected — kill the whole group so a scan can't outlive the
-        # session as an orphan.
+        # Cancellation (server shutdown / client disconnect) or any exit:
+        # never let the scan or its readers outlive this call.
         _kill_group(proc)
+        for tk in drain_tasks:
+            if not tk.done():
+                tk.cancel()
 
     elapsed = loop.time() - start
-
-    truncated = False
-    if len(stdout_b) > MAX_OUTPUT_BYTES:
-        stdout_b = stdout_b[:MAX_OUTPUT_BYTES]
-        truncated = True
-    if len(stderr_b) > MAX_OUTPUT_BYTES:
-        stderr_b = stderr_b[:MAX_OUTPUT_BYTES]
-        truncated = True
+    stdout_b = bytes(stdout_buf)
+    stderr_b = bytes(stderr_buf)
 
     return {
         "argv": argv,
@@ -128,6 +172,9 @@ async def run(
         "stderr": stderr_b.decode("utf-8", errors="replace"),
         "truncated": truncated,
         "timed_out": timed_out,
+        # Output captured before a timeout is real but incomplete — flag it
+        # so a caller never mistakes a timed-out scan for a finished one.
+        "partial": bool(timed_out and (stdout_b or stderr_b)),
     }
 
 

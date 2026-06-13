@@ -42,6 +42,7 @@ from .tools import (
     ffuf,
     gobuster,
     hashcat,
+    health,
     hydra,
     impacket,
     john,
@@ -699,6 +700,16 @@ async def note_append(text: str) -> dict:
 async def wordlist_list() -> dict:
     """Enumerate wordlists under /usr/share/wordlists + /usr/share/seclists."""
     return {"wordlists": engagement.list_wordlists()}
+
+
+# ---------- server health / capability probe ----------
+
+@mcp.tool()
+async def health_check(check_versions: bool = False) -> dict:
+    """Report which wrapped binaries are installed so the agent can degrade
+    gracefully. `check_versions=True` also probes each present binary for a
+    version string (slower — one subprocess per tool)."""
+    return await health.capabilities(check_versions=check_versions)
 
 
 def main() -> int:

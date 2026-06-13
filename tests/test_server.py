@@ -59,6 +59,7 @@ EXPECTED_TOOLS = {
     "loot_read",
     "note_append",
     "wordlist_list",
+    "health_check",
 }
 
 

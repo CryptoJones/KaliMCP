@@ -68,6 +68,25 @@ async def test_run_timeout_marks_timed_out():
 
 
 @pytest.mark.asyncio
+async def test_run_timeout_returns_partial_output(tmp_path):
+    # Emit a line, then hang. The timeout must preserve the line already
+    # printed and flag the result as partial — never as a clean success.
+    cmd = ["sh", "-c", "echo early-finding; sleep 30"]
+    result = await run.run(cmd, timeout=0.7)
+    assert result["timed_out"] is True
+    assert "early-finding" in result["stdout"]
+    assert result["partial"] is True
+    assert result["exit_code"] != 0  # killed, not a clean exit
+
+
+@pytest.mark.asyncio
+async def test_run_clean_exit_not_partial():
+    result = await run.run(["sh", "-c", "echo done"], timeout=5)
+    assert result["timed_out"] is False
+    assert result["partial"] is False
+
+
+@pytest.mark.asyncio
 async def test_timeout_kills_grandchild(tmp_path):
     # The backgrounded `sleep` shares the shell's process group; a timeout must
     # reap the whole group, not just the immediate child.

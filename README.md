@@ -105,6 +105,7 @@ clients):
 | `loot_write` / `loot_list` / `loot_read` | extracted blob store |
 | `note_append` | operator free-form notes.md |
 | `wordlist_list` | enumerate wordlists under `/usr/share/wordlists` + seclists |
+| `health_check` | report which wrapped binaries are installed (optional versions) |
 
 Set `KALIMCP_AUTORECORD=1` to have active-scan tools mirror their
 parsed findings into the active engagement automatically (nmap →
