@@ -15,11 +15,17 @@
 #
 # Wire into Claude Code via ~/.claude/mcp.json — see README.
 #
-# Image is rebuilt against the upstream kali-rolling tag, so refresh
-# regularly (`docker pull kalilinux/kali-rolling`) to track upstream
-# tool updates.
+# The base is pinned by digest, not the moving `kali-rolling` tag, so a
+# build is reproducible and can't silently pull a changed (or tampered)
+# upstream image. To intentionally track upstream tool updates, refresh
+# the digest:
+#
+#   skopeo inspect --format '{{.Digest}}' docker://kalilinux/kali-rolling
+#
+# then update the pin below (the `:kali-rolling` tag is kept alongside the
+# digest purely as a human-readable label — Docker resolves by digest).
 
-FROM kalilinux/kali-rolling
+FROM kalilinux/kali-rolling@sha256:6ae2813f51a2adf265e0a740c5fe3645406a8fc39711a45386aa43f036c79bd5
 
 ENV DEBIAN_FRONTEND=noninteractive
 
