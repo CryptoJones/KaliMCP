@@ -159,6 +159,25 @@ def validate_file(
     return None
 
 
+def distill(
+    result: dict[str, Any],
+    parser: Any,
+    empty: Any,
+) -> dict[str, Any]:
+    """Attach ``result["parsed"]`` from a run result's stdout (issue #9, F).
+
+    Most wrappers end with the identical four lines: distill stdout into a
+    ``parsed`` dict when there's output, else fall back to an empty
+    skeleton. This collapses that repetition — ``parser`` is called with the
+    stdout string, ``empty`` is the no-output factory. Mutates and returns
+    ``result``. Wrappers that combine stdout+stderr or post-process further
+    keep their own tail.
+    """
+    text = result.get("stdout", "") or ""
+    result["parsed"] = parser(text) if text.strip() else empty()
+    return result
+
+
 def quote_argv(argv: list[str]) -> str:
     """Return a shell-safe single-line representation for the audit log."""
     return " ".join(shlex.quote(a) for a in argv)

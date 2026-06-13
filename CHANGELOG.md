@@ -57,6 +57,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — internal
 
+- **Wrapper parsed-tail boilerplate collapsed onto `run.distill()` (#9,
+  Theme F).** Six wrappers (nikto, sslscan, whatweb, gobuster, ffuf, medusa)
+  ended with the identical four-line "distill stdout into `parsed`, else an
+  empty skeleton" block; they now call `run.distill(result, parser, empty)`.
+  Pure refactor — behavior unchanged. Wrappers that combine stdout+stderr or
+  post-process further (hydra, nmap, john, hashcat, snmp, ldap, netexec,
+  smb) keep their own tail. With this, the actionable items of #9 are done;
+  Theme E (smbclient interactive stream) remains a documented won't-fix
+  under the current threat model.
 - **Validation failures go through one `run.error_result()` helper.** The
   seventeen hand-rolled "bad input" return dicts scattered across the tool
   wrappers (unknown profile/mode/protocol, missing wordlist, missing
