@@ -167,8 +167,7 @@ Edit (or create) `~/.claude/mcp.json`:
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
-        "-v", "/home/YOU/.kalimcp:/root/.kalimcp",
-        "-v", "/var/log/kalimcp.log:/var/log/kalimcp.log",
+        "-v", "/home/YOU/.kalimcp:/home/kalimcp/.kalimcp",
         "kalimcp"
       ]
     }
@@ -196,16 +195,20 @@ issue the call.
 
 ## Audit log
 
-Every tool call appends one JSON line to `/var/log/kalimcp.log` (or
-`~/.kalimcp/kalimcp.log` if the system path isn't writable). The
-log records:
+Every tool call appends one JSON line to the audit log. The Docker image
+runs as the non-root `kalimcp` user and writes to
+`~/.kalimcp/kalimcp.log` (i.e. the bind-mounted state dir) by default. A
+bare-metal install writes to `/var/log/kalimcp.log`, falling back to
+`~/.kalimcp/kalimcp.log` if that isn't writable; override the path with
+`KALIMCP_LOG_FILE`. The log records:
 
 - `event`: `tool_invoke`, `passive_invoke`, `tool_exception`.
 - `tool`: which wrapper was called.
 - `target`: the scanned host / URL (full string).
 - `elapsed_ms`, `exit_code`, `timed_out`, `truncated`.
 
-To use the standard system path without sudo on every invocation:
+To use the standard system path on a bare-metal install without sudo on
+every invocation:
 
 ```bash
 sudo touch /var/log/kalimcp.log
