@@ -152,6 +152,13 @@ async def fuzz(
     if err := run.validate_file(wl, "wordlist", parsed=_empty_parsed()):
         return err
 
+    # Theme-B guard: vhost_template is spliced into a `Host:` header, so a
+    # CR/LF in it is HTTP header injection. (target/vhost are hostnames or
+    # URLs — a leading dash is malformed for both.)
+    for _val, _lbl in ((target, "target"), (vhost_template, "vhost_template")):
+        if _val and (err := run.validate_arg(_val, _lbl, parsed=_empty_parsed())):
+            return err
+
     threads = max(1, min(int(threads), 200))
     argv = _build_argv(
         target=target,

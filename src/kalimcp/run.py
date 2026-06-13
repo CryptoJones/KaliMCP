@@ -159,6 +159,51 @@ def validate_file(
     return None
 
 
+def validate_arg(
+    value: str,
+    label: str = "value",
+    *,
+    parsed: Any = None,
+    allow_leading_dash: bool = False,
+) -> dict[str, Any] | None:
+    """Reject an argument value a wrapped tool could re-interpret as one
+    of its own options, or that could inject a line into a header.
+
+    ``run`` launches via ``create_subprocess_exec`` — a list argv, no
+    shell — so there is **no OS command injection** here. The residual
+    risk is *tool-level* (issue #9, Theme B):
+
+    * A positional value beginning with ``-`` is read by the wrapped tool
+      as a flag — ``target="-o/tmp/evil"`` becomes hydra's ``-o``.
+    * A CR/LF embedded in a value spliced into an HTTP header (ffuf's
+      ``Host:``) is header injection; a NUL truncates C-string parsers.
+
+    This is a syntactic well-formedness check, not an authorization gate:
+    it does not restrict *which* hosts an operator may target, it only
+    rejects values that are malformed for the slot they fill (a hostname,
+    URL, service name, or header value never legitimately starts with
+    ``-`` or contains a newline). Set ``allow_leading_dash=True`` for the
+    rare slot where a leading dash is valid.
+
+    Returns ``None`` when ``value`` is acceptable, else an
+    :func:`error_result`.
+    """
+    if not value:
+        return None
+    if not allow_leading_dash and value.startswith("-"):
+        return error_result(
+            f"{label} may not begin with '-' (a wrapped tool would read it "
+            f"as a flag): {value!r}",
+            parsed=parsed,
+        )
+    if any(c in value for c in ("\r", "\n", "\x00")):
+        return error_result(
+            f"{label} may not contain a newline or null byte: {value!r}",
+            parsed=parsed,
+        )
+    return None
+
+
 def quote_argv(argv: list[str]) -> str:
     """Return a shell-safe single-line representation for the audit log."""
     return " ".join(shlex.quote(a) for a in argv)

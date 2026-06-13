@@ -158,6 +158,12 @@ async def crack(
     if password_list and (err := run.validate_file(password_list, "password_list", parsed=_empty())):
         return err
 
+    # Theme-B guard: target/service are trailing positionals — a leading
+    # dash or newline would let an agent inject a hydra flag.
+    for _val, _lbl in ((target, "target"), (service, "service")):
+        if err := run.validate_arg(_val, _lbl, parsed=_empty()):
+            return err
+
     argv: list[str] = ["hydra"]
     if user_wl:
         argv.extend(["-L", user_wl])
