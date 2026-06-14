@@ -37,7 +37,7 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 
-from . import audit, engagement, process_registry, report
+from . import audit, engagement, enrich, process_registry, report
 from .tools import (
     ffuf,
     gobuster,
@@ -551,6 +551,38 @@ async def dig_record(domain: str, record_type: str = "A", timeout_seconds: int =
 async def searchsploit_search(keyword: str, timeout_seconds: int = 30) -> dict:
     """Local Exploit-DB search via `searchsploit` — entirely local."""
     return await passive.searchsploit_search(keyword=keyword, timeout_seconds=timeout_seconds)
+
+
+@mcp.tool()
+async def cve_search(query: str, limit: int = 20, timeout_seconds: int = 15) -> dict:
+    """Look up CVEs on NIST NVD by exact CVE-ID (e.g. `CVE-2021-44228`) or
+    keyword (e.g. `apache log4j`). Enriches a service/version finding with
+    CVSS score + description. Reaches the network."""
+    return await enrich.cve_search(query, limit=limit, timeout_seconds=timeout_seconds)
+
+
+@mcp.tool()
+async def cve_package_audit(
+    package: str,
+    version: str = "",
+    ecosystem: str = "PyPI",
+    timeout_seconds: int = 15,
+) -> dict:
+    """Audit a dependency against OSV.dev for known vulnerabilities.
+
+    `ecosystem` examples: PyPI, npm, Go, Maven, crates.io, Debian. Pass
+    `version` to filter to vulns affecting it. Reaches the network."""
+    return await enrich.cve_package_audit(
+        package, version=version, ecosystem=ecosystem, timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def hash_identify(value: str) -> dict:
+    """Identify a captured hash's likely type(s) with the hashcat `-m` mode
+    and john `--format` to crack it (offline regex table; no network).
+    Pairs with `hashcat_crack` / `john_crack`."""
+    return enrich.identify_hash(value)
 
 
 @mcp.tool()

@@ -49,6 +49,9 @@ EXPECTED_TOOLS = {
     "strings_extract",
     "nm_symbols",
     "objdump_inspect",
+    "cve_search",
+    "cve_package_audit",
+    "hash_identify",
     # Engagement workspace
     "engagement_create",
     "engagement_list",

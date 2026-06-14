@@ -140,6 +140,9 @@ tearing down the session.
 | `dig_record` | `dig` | DNS record lookup |
 | `searchsploit_search` | `searchsploit` | local Exploit-DB grep |
 | `cert_dump` | `openssl s_client` | TLS cert chain inspection |
+| `cve_search` | NIST NVD | CVE lookup by ID / keyword → CVSS + description |
+| `cve_package_audit` | OSV.dev | dependency / supply-chain vuln lookup |
+| `hash_identify` | (offline) | hash type → hashcat `-m` mode + john `--format` |
 
 **Loot triage** (read-only analysis of a file already on disk)
 

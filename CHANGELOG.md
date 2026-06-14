@@ -70,6 +70,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `severity` or the finding category. Credential **secrets are masked** in
   every format — a report is a shareable artifact. (PDF/HTML skipped — heavy
   deps.)
+### Added — tools
+
+- **CVE enrichment + hash identification (#23).** New `kalimcp.enrich` adds
+  three tools: `cve_search` (NIST NVD by CVE-ID or keyword → CVSS +
+  description), `cve_package_audit` (OSV.dev dependency/supply-chain lookup
+  by ecosystem/package/version), and `hash_identify` (offline regex table
+  mapping a captured hash to candidate types with the hashcat `-m` mode and
+  john `--format` — pairs with `hashcat_crack`/`john_crack`). The two CVE
+  tools reach the network through isolated, mockable helpers run in a thread;
+  `hash_identify` is fully offline. The test suite still never touches the
+  network.
 
 ### Security
 
