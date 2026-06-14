@@ -114,6 +114,7 @@ clients):
 | `cred_record` / `cred_query` | credential cache (file mode 0600) |
 | `loot_write` / `loot_list` / `loot_read` / `loot_verify` | extracted blob store (0600, SHA-256-verified) |
 | `note_append` | operator free-form notes.md |
+| `report_export` | export findings as Markdown / SARIF / JUnit (secrets masked) |
 | `wordlist_list` | enumerate wordlists under `/usr/share/wordlists` + seclists |
 | `process_list` | list running tool subprocesses (PID, binary, elapsed) |
 | `process_kill` | stop a runaway scan by PID (SIGTERM, or SIGKILL with `force`) |

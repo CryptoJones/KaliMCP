@@ -58,6 +58,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no-authorization-gate rule. New pure `engagement.evidence_advisory()`
   helper; auto-recorded findings (which always carry a `source_tool`) never
   trigger it.
+### Added — tools
+
+- **`report_export` — SARIF / JUnit / Markdown reports (#18).** New
+  `kalimcp.report` renders the active engagement's findings store as a
+  shareable report in three stdlib-only formats: **markdown** (human
+  report), **SARIF v2.1.0** (GitHub Code Scanning — rules deduped by
+  finding category, DAST `webRequest`/`webResponse` attached when a finding
+  carries HTTP evidence), and **JUnit XML** (error-severity findings become
+  `<failure>` so a CI import goes red). Severity derives from a payload
+  `severity` or the finding category. Credential **secrets are masked** in
+  every format — a report is a shareable artifact. (PDF/HTML skipped — heavy
+  deps.)
 
 ### Security
 
