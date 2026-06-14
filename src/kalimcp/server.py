@@ -56,6 +56,7 @@ from .tools import (
     snmp,
     sqlmap,
     sslscan,
+    traceroute,
     whatweb,
     winrm,
 )
@@ -256,6 +257,22 @@ async def ldap_enum(
     return await ldap.enumerate(
         target=target,
         port=port,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def traceroute_path(
+    target: str,
+    max_hops: int = 30,
+    wait_seconds: int = 2,
+    timeout_seconds: int = 120,
+) -> dict:
+    """Discover the network path to `target` via traceroute (`-n`, no DNS)."""
+    return await traceroute.trace(
+        target=target,
+        max_hops=max_hops,
+        wait_seconds=wait_seconds,
         timeout_seconds=timeout_seconds,
     )
 
@@ -543,6 +560,79 @@ async def cert_dump(host: str, port: int = 443, timeout_seconds: int = 30) -> di
     Useful for pre-engagement cert / CN / SAN review.
     """
     return await passive.cert_dump(host=host, port=port, timeout_seconds=timeout_seconds)
+
+
+# ---------- loot triage ----------
+# Read-only analysis of a file already on disk (a captured pcap or a
+# pulled binary). No target probe — audited as passive_invoke.
+
+@mcp.tool()
+async def tshark_pcap(
+    pcap: str,
+    mode: str = "summary",
+    display_filter: str = "",
+    timeout_seconds: int = 120,
+) -> dict:
+    """Analyze a capture file with tshark (read-only; never live capture).
+
+    Modes: `summary`, `http`, `protocol_hierarchy`, `conversations`,
+    `expert`. `display_filter` is an optional Wireshark display filter.
+    """
+    return await passive.tshark_pcap(
+        pcap=pcap,
+        mode=mode,
+        display_filter=display_filter,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def strings_extract(
+    path: str,
+    min_length: int = 4,
+    encoding: str = "s",
+    timeout_seconds: int = 60,
+) -> dict:
+    """Extract printable strings from a binary (`strings -n -e`)."""
+    return await passive.strings_extract(
+        path=path,
+        min_length=min_length,
+        encoding=encoding,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def nm_symbols(
+    path: str,
+    demangle: bool = True,
+    dynamic: bool = False,
+    timeout_seconds: int = 60,
+) -> dict:
+    """List symbols in an object/library via nm (optionally demangled)."""
+    return await passive.nm_symbols(
+        path=path,
+        demangle=demangle,
+        dynamic=dynamic,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def objdump_inspect(
+    path: str,
+    mode: str = "headers",
+    timeout_seconds: int = 120,
+) -> dict:
+    """Inspect an object file via objdump.
+
+    Modes: `headers`, `sections`, `symbols`, `disasm`.
+    """
+    return await passive.objdump_inspect(
+        path=path,
+        mode=mode,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 # ---------- engagement workspace ----------
