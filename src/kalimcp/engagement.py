@@ -211,6 +211,42 @@ def _count_lines(p: Path) -> int:
 
 # ---------- findings ----------
 
+# Payload keys that count as supporting evidence for a finding. A finding
+# carrying any of these (or recorded by a tool, i.e. with a source_tool) is
+# considered backed by proof; one with none is a bare claim.
+_EVIDENCE_KEYS: tuple[str, ...] = (
+    "evidence", "proof", "loot", "loot_ref", "output", "raw",
+    "request", "response", "screenshot", "url", "ports", "banner",
+)
+
+
+def evidence_advisory(
+    payload: dict[str, Any] | None, source_tool: str = ""
+) -> str | None:
+    """Advisory (never blocking) check that a finding is backed by evidence.
+
+    Returns a nudge string when a finding has neither a ``source_tool`` nor
+    any recognized evidence field in its payload — i.e. it's a bare claim
+    with nothing to back it in a report — else ``None``. Per the
+    no-authorization-gate design rule this never prevents the record; the
+    caller surfaces the message alongside a successful write so the agent
+    is nudged to attach the tool output or a loot reference.
+    """
+    if source_tool and source_tool.strip():
+        return None
+    if isinstance(payload, dict):
+        for k in _EVIDENCE_KEYS:
+            value = payload.get(k)
+            if value not in (None, "", [], {}, ()):
+                return None
+    return (
+        "finding recorded without evidence: no source_tool and no "
+        "evidence/proof/loot/output field in the payload. Attach the tool "
+        "output or a loot reference so the finding is defensible in a report. "
+        "(advisory only — the finding was still recorded.)"
+    )
+
+
 def record_finding(
     category: str,
     host: str,

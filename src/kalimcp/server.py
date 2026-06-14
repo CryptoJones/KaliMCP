@@ -696,9 +696,17 @@ async def finding_record(
     `category` is a free-form tag (`host`, `service`, `sqli`,
     `subdomain`, ...). Auto-record uses the same machinery for
     `parsed` extractions from active-scan tools.
+
+    Non-blocking: if the finding has no `source_tool` and no evidence field
+    in `payload` (evidence/proof/loot/output/...), the result carries an
+    `advisory` nudge to attach proof — the finding is still recorded.
     """
     ok = engagement.record_finding(category, host, payload, source_tool=source_tool)
-    return {"ok": ok}
+    result: dict[str, object] = {"ok": ok}
+    advisory = engagement.evidence_advisory(payload, source_tool)
+    if advisory:
+        result["advisory"] = advisory
+    return result
 
 
 @mcp.tool()

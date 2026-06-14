@@ -48,6 +48,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   real-but-incomplete output) — a timed-out scan is never reported as a
   clean success. The 2 MB output cap and process-group kill-on-timeout /
   kill-on-cancel behavior are preserved.
+### Added — engagement workspace
+
+- **Advisory evidence check on `finding_record` (#21).** Recording a finding
+  that has neither a `source_tool` nor any evidence field in its payload
+  (`evidence`/`proof`/`loot`/`output`/`ports`/...) now returns an `advisory`
+  nudge to attach proof so the finding is defensible in a report. It is
+  **non-blocking** — the finding is still recorded — consistent with the
+  no-authorization-gate rule. New pure `engagement.evidence_advisory()`
+  helper; auto-recorded findings (which always carry a `source_tool`) never
+  trigger it.
 
 ### Security
 
