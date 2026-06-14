@@ -1,0 +1,17 @@
+# gitleaks config. Uses the default rule set; add allowlist entries for known
+# test fixtures so CI doesn't flag intentional fake secrets.
+title = "KaliMCP gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures and docs use obvious fake tokens and sample hashes."
+paths = [
+  '''tests/.*''',
+  '''\.env\.example''',
+]
+regexes = [
+  # Well-known sample MD5 ("password") used in hash_identify probes/tests.
+  '''5f4dcc3b5aa765d61d8327deb882cf99''',
+]

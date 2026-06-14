@@ -21,7 +21,7 @@ import os
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
-from .. import audit, engagement, untrusted
+from .. import audit, engagement, ratelimit, untrusted
 
 
 def _autorecord_enabled() -> bool:
@@ -190,6 +190,13 @@ def active_tool(
     def wrap(fn: Callable[..., Awaitable[dict[str, Any]]]):
         @functools.wraps(fn)
         async def inner(target: str, **kwargs) -> dict[str, Any]:
+            # Opt-in rate limit (KALIMCP_RATE_PER_MINUTE): bound how fast an agent
+            # can launch active scans. No-op unless the operator configured it.
+            try:
+                ratelimit.acquire()
+            except ratelimit.RateLimitError as exc:
+                audit.log("rate_limited", tool=tool_name, target=target)
+                return {"ok": False, "error": "rate_limited", "message": str(exc)}
             # Computed up front so both the exception sink and the argv
             # log redact the same known secrets (see audit.redact_*).
             secret_values = [

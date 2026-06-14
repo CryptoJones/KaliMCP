@@ -1,0 +1,18 @@
+# Dependabot — keeps Python deps and the SHA-pinned GitHub Actions current.
+# KaliMCP uses pip (PEP 621 optional-deps), so the Python ecosystem is "pip".
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      python-deps:
+        patterns: ["*"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
