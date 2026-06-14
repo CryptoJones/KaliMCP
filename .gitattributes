@@ -1,0 +1,2 @@
+# Append-only logs merge by keeping both sides (avoids changelog conflicts).
+CHANGELOG.md merge=union
