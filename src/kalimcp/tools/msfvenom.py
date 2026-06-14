@@ -89,6 +89,19 @@ async def generate(
     payload, lhost, lport}``. Raw bytes are NEVER returned in the
     MCP result.
     """
+    # Theme-B guard: lhost is fused into the `LHOST=` token — a newline
+    # or leading dash would let msfvenom re-read it as a flag/option.
+    if err := run.validate_arg(
+        lhost,
+        "lhost",
+        parsed={
+            "path": "", "sha256": "", "size_bytes": 0,
+            "format": format, "payload": payload,
+            "lhost": lhost, "lport": int(lport),
+        },
+    ):
+        return err
+
     payload_dir = _payload_dir()
     # Output to a temp filename; we rename to the sha256 after.
     tmp_path = payload_dir / f".tmp.{os.getpid()}.{_ext_for_format(format)}"

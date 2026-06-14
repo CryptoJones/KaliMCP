@@ -76,6 +76,11 @@ async def execute(
             "winrm_exec needs `password=` or `nthash=`.",
             parsed={"output_lines": []},
         )
+    # Theme-B guard: target/username are positionals netexec could read
+    # as its own flags if they began with a dash.
+    for _val, _lbl in ((target, "target"), (username, "username")):
+        if err := run.validate_arg(_val, _lbl, parsed={"output_lines": []}):
+            return err
     argv: list[str] = ["netexec", "winrm", target, "-u", username]
     if nthash:
         argv.extend(["-H", nthash])

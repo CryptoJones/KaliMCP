@@ -60,6 +60,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   literal like `[::1]:8080` fell through unparsed and the out-of-scope
   warning silently never fired for IPv6 targets. Bracketed IPv6 (with or
   without a port) is now parsed to the bare address.
+- **Tool-level flag / header injection guarded (#9, Theme B).** `run.run`
+  uses `create_subprocess_exec` (list argv, no shell), so there was never
+  OS command injection — but a positional value beginning with `-` is
+  re-read by the *wrapped* tool as one of its own flags (`target="-o/tmp/x"`
+  → hydra's `-o`), and a CR/LF spliced into ffuf's `Host:` header is header
+  injection. New `run.validate_arg()` rejects a leading dash and embedded
+  newline/NUL bytes; it's applied to the positional/header slots in hydra
+  (`target`, `service`), winrm (`target`, `username`), msfvenom (`lhost`),
+  and ffuf (`target`, `vhost_template`). This is a syntactic well-formedness
+  check, not a path/host allowlist — consistent with the no-authorization-gate
+  design rule. Theme E (smbclient command stream) and Theme F (wrapper
+  boilerplate cleanup) remain open.
 
 ### Fixed
 

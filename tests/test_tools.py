@@ -750,6 +750,58 @@ async def test_hydra_unknown_profile_returns_error_without_running():
     }
 
 
+# ---------- Theme B: positional flag / header injection guard (#9) ----------
+
+
+@pytest.mark.asyncio
+async def test_hydra_dash_target_rejected_without_running():
+    with patch("kalimcp.tools.hydra.run.run", new=AsyncMock()) as m:
+        result = await hydra.crack(target="-o/tmp/evil", service="ssh", profile="standard")
+    m.assert_not_called()
+    assert result["exit_code"] == -1
+    assert "target" in result["stderr"]
+
+
+@pytest.mark.asyncio
+async def test_hydra_dash_service_rejected_without_running():
+    with patch("kalimcp.tools.hydra.run.run", new=AsyncMock()) as m:
+        result = await hydra.crack(target="192.168.1.10", service="-V", profile="standard")
+    m.assert_not_called()
+    assert "service" in result["stderr"]
+
+
+@pytest.mark.asyncio
+async def test_winrm_dash_target_rejected_without_running():
+    with patch("kalimcp.tools.winrm.run.run", new=AsyncMock()) as m:
+        result = await winrm.execute(
+            target="-bad", username="admin", command="whoami", password="pw",
+        )
+    m.assert_not_called()
+    assert result["exit_code"] == -1
+
+
+@pytest.mark.asyncio
+async def test_msfvenom_newline_lhost_rejected_without_running():
+    with patch("kalimcp.tools.msfvenom.run.run", new=AsyncMock()) as m:
+        result = await msfvenom.generate(
+            target="lab", payload="windows/x64/meterpreter/reverse_tcp",
+            lhost="10.0.0.1\n-evil",
+        )
+    m.assert_not_called()
+    assert "lhost" in result["stderr"]
+
+
+@pytest.mark.asyncio
+async def test_ffuf_crlf_vhost_rejected_without_running():
+    with patch("kalimcp.tools.ffuf.run.run", new=AsyncMock()) as m:
+        result = await ffuf.fuzz(
+            target="http://host/", mode="vhost",
+            vhost_template="FUZZ\r\nX-Injected: 1", wordlist="/tmp/wl.txt",
+        )
+    m.assert_not_called()
+    assert "vhost_template" in result["stderr"]
+
+
 @pytest.mark.asyncio
 async def test_hydra_parsed_field_extracts_credentials():
     fake = _fake_result(stdout=_HYDRA_OUTPUT_SAMPLE)

@@ -121,3 +121,36 @@ def test_quote_argv_handles_spaces_and_specials():
 async def test_empty_argv_rejected():
     with pytest.raises(ValueError):
         await run.run([])
+
+
+# ---------- validate_arg (#9 Theme B: tool-level flag/header injection) ----------
+
+
+def test_validate_arg_accepts_normal_values():
+    assert run.validate_arg("192.168.1.10", "target") is None
+    assert run.validate_arg("ssh", "service") is None
+    assert run.validate_arg("http://host/FUZZ", "target") is None
+    assert run.validate_arg("", "target") is None  # empty is the caller's concern
+
+
+def test_validate_arg_rejects_leading_dash():
+    err = run.validate_arg("-oG/tmp/evil", "target")
+    assert err is not None
+    assert err["exit_code"] == -1
+    assert "target" in err["stderr"]
+
+
+def test_validate_arg_rejects_newline_and_null():
+    assert run.validate_arg("host\nX-Injected: 1", "vhost") is not None
+    assert run.validate_arg("host\r\nevil", "vhost") is not None
+    assert run.validate_arg("host\x00evil", "target") is not None
+
+
+def test_validate_arg_allow_leading_dash_opt_in():
+    assert run.validate_arg("-weird-but-allowed", "x", allow_leading_dash=True) is None
+
+
+def test_validate_arg_attaches_parsed_skeleton():
+    skel = {"results": []}
+    err = run.validate_arg("-bad", "target", parsed=skel)
+    assert err["parsed"] == skel
