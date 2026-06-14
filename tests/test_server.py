@@ -66,6 +66,7 @@ EXPECTED_TOOLS = {
     "wordlist_list",
     "process_list",
     "process_kill",
+    "health_check",
 }
 
 

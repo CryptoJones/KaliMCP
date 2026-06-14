@@ -117,6 +117,7 @@ clients):
 | `wordlist_list` | enumerate wordlists under `/usr/share/wordlists` + seclists |
 | `process_list` | list running tool subprocesses (PID, binary, elapsed) |
 | `process_kill` | stop a runaway scan by PID (SIGTERM, or SIGKILL with `force`) |
+| `health_check` | report which wrapped binaries are installed (optional versions) |
 
 Set `KALIMCP_AUTORECORD=1` to have active-scan tools mirror their
 parsed findings into the active engagement automatically (nmap →

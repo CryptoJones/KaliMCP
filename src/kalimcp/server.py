@@ -42,6 +42,7 @@ from .tools import (
     ffuf,
     gobuster,
     hashcat,
+    health,
     hydra,
     impacket,
     john,
@@ -819,6 +820,16 @@ async def process_kill(pid: int, force: bool = False) -> dict:
     result = process_registry.kill(pid, sig=_signal.SIGKILL if force else _signal.SIGTERM)
     audit.log("process_kill", pid=pid, force=force, ok=result.get("ok", False))
     return result
+
+
+# ---------- server health / capability probe ----------
+
+@mcp.tool()
+async def health_check(check_versions: bool = False) -> dict:
+    """Report which wrapped binaries are installed so the agent can degrade
+    gracefully. `check_versions=True` also probes each present binary for a
+    version string (slower — one subprocess per tool)."""
+    return await health.capabilities(check_versions=check_versions)
 
 
 def main() -> int:
