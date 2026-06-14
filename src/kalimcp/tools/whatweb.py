@@ -128,9 +128,4 @@ async def fingerprint(
     ]
     result = await run.run(argv, timeout=timeout_seconds)
 
-    stdout = result.get("stdout", "") or ""
-    if stdout.strip():
-        result["parsed"] = _parse_output(stdout)
-    else:
-        result["parsed"] = _empty_parsed()
-    return result
+    return run.distill(result, _parse_output, _empty_parsed)

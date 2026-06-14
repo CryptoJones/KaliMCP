@@ -173,3 +173,24 @@ def test_validate_arg_attaches_parsed_skeleton():
     skel = {"results": []}
     err = run.validate_arg("-bad", "target", parsed=skel)
     assert err["parsed"] == skel
+
+
+# ---------- distill (#9 Theme F) ----------
+
+
+def test_distill_parses_when_output_present():
+    result = {"stdout": "data", "stderr": ""}
+    out = run.distill(result, lambda t: {"got": t}, lambda: {"empty": True})
+    assert out["parsed"] == {"got": "data"}
+    assert out is result  # mutates in place
+
+
+def test_distill_uses_empty_when_blank():
+    for stdout in ("", "   \n\t"):
+        out = run.distill({"stdout": stdout}, lambda t: {"got": t}, lambda: {"empty": True})
+        assert out["parsed"] == {"empty": True}
+
+
+def test_distill_missing_stdout_key():
+    out = run.distill({}, lambda t: {"got": t}, lambda: {"empty": True})
+    assert out["parsed"] == {"empty": True}
