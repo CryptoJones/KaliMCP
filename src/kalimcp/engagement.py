@@ -27,6 +27,7 @@ ground-truth forensic record.
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import ipaddress
 import json
 import os
@@ -182,7 +183,9 @@ def status(name: str | None = None) -> dict[str, Any]:
     loot_count = 0
     loot_dir = p / "loot"
     if loot_dir.exists():
-        loot_count = sum(1 for _ in loot_dir.iterdir() if _.is_file())
+        loot_count = sum(
+            1 for f in loot_dir.iterdir() if f.is_file() and f.name != _LOOT_MANIFEST
+        )
     return {
         "name": meta.get("name", _sanitize_name(n)),
         "scope": meta.get("scope", []),
@@ -319,19 +322,62 @@ def query_creds(
 
 
 # ---------- loot ----------
+#
+# The loot store is the operator's evidence cache. Each blob is written
+# owner-only (0600) and its SHA-256 is recorded in a per-engagement
+# manifest (``loot/.manifest.json``, also 0600). That lets an operator
+# transfer a blob off the box and verify it arrived intact, and lets
+# ``verify_loot`` detect on-disk tampering or corruption against the hash
+# recorded at write time (#20).
+
+_LOOT_MANIFEST = ".manifest.json"
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _loot_manifest_path(name: str | None = None) -> Path:
+    return engagement_dir(name) / "loot" / _LOOT_MANIFEST
+
+
+def _read_loot_manifest(name: str | None = None) -> dict[str, Any]:
+    p = _loot_manifest_path(name)
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_loot_manifest(manifest: dict[str, Any], name: str | None = None) -> None:
+    p = _loot_manifest_path(name)
+    try:
+        p.write_text(json.dumps(manifest, sort_keys=True, indent=2), encoding="utf-8")
+        p.chmod(0o600)
+    except OSError:
+        pass
+
 
 def write_loot(blob_name: str, data: bytes | str, *, name: str | None = None) -> dict[str, Any]:
-    """Write ``data`` into ``loot/<safe_name>``. Returns path + size."""
-    p = engagement_dir(name) / "loot" / _sanitize_name(blob_name)
+    """Write ``data`` into ``loot/<safe_name>`` (mode 0600).
+
+    Records the blob's SHA-256 + size in the loot manifest and returns
+    them, so the operator can checksum-verify a later transfer.
+    """
+    safe = _sanitize_name(blob_name)
+    p = engagement_dir(name) / "loot" / safe
+    raw = data.encode("utf-8") if isinstance(data, str) else data
     try:
-        if isinstance(data, str):
-            p.write_text(data, encoding="utf-8")
-        else:
-            p.write_bytes(data)
+        p.write_bytes(raw)
+        p.chmod(0o600)
         size = p.stat().st_size
-        return {"ok": True, "path": str(p), "size_bytes": size}
     except OSError as exc:
         return {"ok": False, "error": "write_failed", "message": str(exc)}
+    digest = _sha256_bytes(raw)
+    manifest = _read_loot_manifest(name)
+    manifest[safe] = {"sha256": digest, "size_bytes": size, "written_at": _now()}
+    _write_loot_manifest(manifest, name)
+    return {"ok": True, "path": str(p), "size_bytes": size, "sha256": digest}
 
 
 def list_loot(*, name: str | None = None) -> list[dict[str, Any]]:
@@ -339,43 +385,92 @@ def list_loot(*, name: str | None = None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     if not p.exists():
         return out
+    manifest = _read_loot_manifest(name)
     for child in sorted(p.iterdir()):
-        if not child.is_file():
+        if not child.is_file() or child.name == _LOOT_MANIFEST:
             continue
         try:
             stat = child.stat()
         except OSError:
             continue
-        out.append({
+        entry: dict[str, Any] = {
             "name": child.name,
             "path": str(child),
             "size_bytes": stat.st_size,
             "mtime": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(timespec="seconds"),
-        })
+        }
+        recorded = manifest.get(child.name)
+        if isinstance(recorded, dict) and recorded.get("sha256"):
+            entry["sha256"] = recorded["sha256"]
+        out.append(entry)
     return out
 
 
 def read_loot(blob_name: str, *, name: str | None = None) -> dict[str, Any]:
-    """Read a loot blob. Returns text or base64-encoded bytes."""
+    """Read a loot blob. Returns text or base64-encoded bytes.
+
+    Includes the blob's current ``sha256`` and a ``verified`` flag (does it
+    still match the hash recorded when it was written?).
+    """
     import base64
-    p = engagement_dir(name) / "loot" / _sanitize_name(blob_name)
+    safe = _sanitize_name(blob_name)
+    p = engagement_dir(name) / "loot" / safe
     if not p.exists():
         return {"ok": False, "error": "not_found"}
     try:
         data = p.read_bytes()
     except OSError as exc:
         return {"ok": False, "error": "read_failed", "message": str(exc)}
+    digest = _sha256_bytes(data)
+    recorded = _read_loot_manifest(name).get(safe)
+    recorded_hash = recorded.get("sha256") if isinstance(recorded, dict) else None
+    common: dict[str, Any] = {
+        "ok": True,
+        "size_bytes": len(data),
+        "sha256": digest,
+        "verified": (recorded_hash == digest) if recorded_hash else None,
+    }
     # Detect whether the blob is plausibly text.
     try:
         text = data.decode("utf-8")
-        return {"ok": True, "encoding": "utf-8", "text": text, "size_bytes": len(data)}
+        return {**common, "encoding": "utf-8", "text": text}
     except UnicodeDecodeError:
         return {
-            "ok": True,
+            **common,
             "encoding": "base64",
             "base64": base64.b64encode(data).decode("ascii"),
-            "size_bytes": len(data),
         }
+
+
+def verify_loot(
+    blob_name: str, expected_sha256: str = "", *, name: str | None = None
+) -> dict[str, Any]:
+    """Checksum-verify a loot blob.
+
+    Recomputes the blob's SHA-256 and compares it to ``expected_sha256``
+    when given, otherwise to the hash recorded in the manifest at write
+    time. ``verified`` is true only when the comparison hash exists and
+    matches — a tampered or truncated blob, or one with no reference hash,
+    is never silently reported as verified.
+    """
+    safe = _sanitize_name(blob_name)
+    p = engagement_dir(name) / "loot" / safe
+    if not p.exists():
+        return {"ok": False, "error": "not_found"}
+    try:
+        digest = _sha256_bytes(p.read_bytes())
+    except OSError as exc:
+        return {"ok": False, "error": "read_failed", "message": str(exc)}
+    recorded = _read_loot_manifest(name).get(safe)
+    recorded_hash = recorded.get("sha256") if isinstance(recorded, dict) else None
+    reference = expected_sha256.strip().lower() or recorded_hash
+    return {
+        "ok": True,
+        "sha256": digest,
+        "recorded_sha256": recorded_hash,
+        "compared_against": "expected" if expected_sha256.strip() else "manifest",
+        "verified": bool(reference) and reference == digest,
+    }
 
 
 # ---------- notes ----------

@@ -775,8 +775,20 @@ async def loot_list() -> dict:
 
 @mcp.tool()
 async def loot_read(blob_name: str) -> dict:
-    """Read a loot file. Returns text or base64-encoded bytes."""
+    """Read a loot file. Returns text or base64-encoded bytes, plus its
+    sha256 and a `verified` flag (matches the hash recorded at write time)."""
     return engagement.read_loot(blob_name)
+
+
+@mcp.tool()
+async def loot_verify(blob_name: str, expected_sha256: str = "") -> dict:
+    """Checksum-verify a loot blob's SHA-256.
+
+    Compares the blob's current hash to `expected_sha256` if given (e.g. a
+    hash from the source host), otherwise to the hash recorded when it was
+    written. Use after transferring loot to confirm it arrived intact.
+    """
+    return engagement.verify_loot(blob_name, expected_sha256)
 
 
 @mcp.tool()

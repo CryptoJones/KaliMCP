@@ -112,7 +112,7 @@ clients):
 | `engagement_list` / `engagement_use` / `engagement_status` | switch & inspect |
 | `finding_record` / `finding_query` / `host_list` | append-only structured findings |
 | `cred_record` / `cred_query` | credential cache (file mode 0600) |
-| `loot_write` / `loot_list` / `loot_read` | extracted blob store |
+| `loot_write` / `loot_list` / `loot_read` / `loot_verify` | extracted blob store (0600, SHA-256-verified) |
 | `note_append` | operator free-form notes.md |
 | `wordlist_list` | enumerate wordlists under `/usr/share/wordlists` + seclists |
 | `process_list` | list running tool subprocesses (PID, binary, elapsed) |
