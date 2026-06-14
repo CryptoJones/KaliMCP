@@ -124,6 +124,7 @@ clients):
 | `loot_write` / `loot_list` / `loot_read` / `loot_verify` | extracted blob store (0600, SHA-256-verified) |
 | `note_append` | operator free-form notes.md |
 | `report_export` | export findings as Markdown / SARIF / JUnit (secrets masked) |
+| `oast_start` / `oast_register` / `oast_poll` / `oast_stop` | self-hosted OOB callback catcher for blind-vuln detection |
 | `wordlist_list` | enumerate wordlists under `/usr/share/wordlists` + seclists |
 | `process_list` | list running tool subprocesses (PID, binary, elapsed) |
 | `process_kill` | stop a runaway scan by PID (SIGTERM, or SIGKILL with `force`) |

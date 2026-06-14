@@ -81,6 +81,10 @@ EXPECTED_TOOLS = {
     "session_status",
     "session_list",
     "system_network_info",
+    "oast_start",
+    "oast_register",
+    "oast_poll",
+    "oast_stop",
 }
 
 

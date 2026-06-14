@@ -37,7 +37,7 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 
-from . import audit, engagement, enrich, process_registry, report, sessions
+from . import audit, engagement, enrich, oast, process_registry, report, sessions
 from .tools import (
     ffuf,
     gobuster,
@@ -856,7 +856,6 @@ async def wordlist_list() -> dict:
     return {"wordlists": engagement.list_wordlists()}
 
 
-<<<<<<< HEAD
 # ---------- process control ----------
 # Live view + kill switch for running tool subprocesses, so a runaway scan
 # can be stopped without killing the MCP session (issue #13). The listing is
@@ -895,7 +894,8 @@ async def health_check(check_versions: bool = False) -> dict:
     gracefully. `check_versions=True` also probes each present binary for a
     version string (slower — one subprocess per tool)."""
     return await health.capabilities(check_versions=check_versions)
-=======
+
+
 # ---------- interactive sessions ----------
 # Long-lived SSH (OpenSSH ControlMaster) and reverse-shell sessions, keyed
 # by session id. Audited, not scope-gated (per the no-gates rule).
@@ -978,7 +978,41 @@ async def system_network_info() -> dict:
     """Local interface addresses + a recommended LHOST for a reverse shell
     (prefers a VPN/tun address on an engagement)."""
     return sessions.system_network_info()
->>>>>>> origin/feat/16-interactive-sessions
+
+
+# ---------- OAST / out-of-band callback catcher ----------
+# Self-hosted (no third-party collaborator), off until oast_start. For blind
+# vuln detection: the target calls back to a host we control.
+
+@mcp.tool()
+async def oast_start(host: str = "127.0.0.1", port: int = 8000) -> dict:
+    """Start the self-hosted OOB callback catcher (HTTP). Off by default.
+
+    Bind `host` to an address the target can reach (e.g. your VPN/tun IP —
+    see `system_network_info`). Then `oast_register` payloads and `oast_poll`
+    for callbacks."""
+    return await oast.oast_start(host=host, port=port)
+
+
+@mcp.tool()
+async def oast_register(vuln_class: str = "generic") -> dict:
+    """Mint a correlation token + `{OAST}` payloads for a vuln class
+    (ssrf / rce / xxe / log4shell / sqli_oob / generic) and persist a
+    `pending_oob` record. Inject a returned payload into the target."""
+    return oast.oast_register(vuln_class)
+
+
+@mcp.tool()
+async def oast_poll() -> dict:
+    """Return captured OOB interactions; any whose path/Host carries a
+    pending token materializes an `oob_confirmed` finding."""
+    return oast.oast_poll()
+
+
+@mcp.tool()
+async def oast_stop() -> dict:
+    """Stop the OOB catcher and discard in-process interactions."""
+    return await oast.oast_stop()
 
 
 def main() -> int:
