@@ -26,6 +26,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changed or tampered upstream image (refresh with `skopeo inspect`). CI
   (both GitHub Actions and Woodpecker) gains a **gitleaks** secret scan and
   a **syft** CycloneDX SBOM step, alongside the existing pip-audit CVE scan.
+- **Tool output is handled as untrusted, attacker-controlled data (#11).**
+  Scanned-target output (HTTP titles, `Server:`/banner strings, TLS cert
+  CNs, dir-brute hits) is fully controlled by the host under test, so it
+  can carry a prompt-injection payload into the agent. New
+  `kalimcp.untrusted` + the `@active_tool` choke point now: (1) hand the
+  model a **bounded** copy of `stdout`/`stderr` (default 64 KiB, override
+  via `KALIMCP_MODEL_OUTPUT_LIMIT`) so a hostile or chatty target can't
+  flood the agent's context — the full output stays in `run.run`'s 2 MB
+  capture and, with auto-record on, is mirrored to the engagement loot
+  store (`full_output_loot` path on the result); (2) tag every tool result
+  with `untrusted_output: true` and an `untrusted_note` telling the agent
+  to treat the content as inert data, not instructions. Marking is skipped
+  for pre-launch validation errors (no subprocess ran). No scrubbing of the
+  text itself — any content filter is bypassable and mangles real recon
+  data; bounding + tagging are the honest mitigations.
 - **Audit-log secret redaction is now fail-closed (#8).** `redact_argv`
   previously only redacted a secret when it was a standalone token
   immediately after an exact-match secret flag, so two common shapes

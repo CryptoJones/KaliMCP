@@ -34,6 +34,74 @@ async def test_target_runs_and_returns_success():
     assert result["exit_code"] == 0
 
 
+# ---------- untrusted output marking / bounding (#11) ----------
+
+
+@pytest.mark.asyncio
+async def test_result_marked_untrusted_when_subprocess_ran():
+    @active_tool("test-untrusted")
+    async def stub(target: str, **kwargs):
+        return {"exit_code": 0, "argv": ["fake", target], "stdout": "Server: evil", "stderr": ""}
+
+    result = await stub(target="127.0.0.1")
+    assert result["untrusted_output"] is True
+    assert "not instructions" in result["untrusted_note"]
+    # Small output isn't truncated.
+    assert "output_truncated_for_model" not in result
+    assert result["stdout"] == "Server: evil"
+
+
+@pytest.mark.asyncio
+async def test_prelaunch_error_not_marked_untrusted():
+    """A pre-launch error_result (empty argv) is not tool output."""
+    from kalimcp import run
+
+    @active_tool("test-prelaunch")
+    async def stub(target: str, **kwargs):
+        return run.error_result("bad input", parsed={"x": []})
+
+    result = await stub(target="127.0.0.1")
+    assert "untrusted_output" not in result
+
+
+@pytest.mark.asyncio
+async def test_large_output_bounded_for_model(monkeypatch):
+    monkeypatch.setenv("KALIMCP_MODEL_OUTPUT_LIMIT", "100")
+
+    @active_tool("test-flood")
+    async def stub(target: str, **kwargs):
+        return {"exit_code": 0, "argv": ["fake", target], "stdout": "X" * 5000, "stderr": ""}
+
+    result = await stub(target="127.0.0.1")
+    assert result["output_truncated_for_model"] is True
+    assert len(result["stdout"]) < 5000
+    assert "truncated" in result["stdout"]
+
+
+@pytest.mark.asyncio
+async def test_full_output_mirrored_to_loot_on_truncation(tmp_path, monkeypatch):
+    """With auto-record on, the full pre-truncation output lands in loot."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("KALIMCP_AUTORECORD", "1")
+    monkeypatch.setenv("KALIMCP_MODEL_OUTPUT_LIMIT", "100")
+    monkeypatch.delenv("KALIMCP_ENGAGEMENT", raising=False)
+    from pathlib import Path
+
+    from kalimcp import engagement
+    engagement.ROOT_DIR = Path.home() / ".kalimcp"
+    engagement.ENGAGEMENTS_DIR = engagement.ROOT_DIR / "engagements"
+
+    @active_tool("test-loot")
+    async def stub(target: str, **kwargs):
+        return {"exit_code": 0, "argv": ["fake", target], "stdout": "Y" * 5000, "stderr": ""}
+
+    result = await stub(target="10.0.0.5")
+    assert result["output_truncated_for_model"] is True
+    loot_path = result.get("full_output_loot")
+    assert loot_path, "full output not mirrored to loot"
+    assert Path(loot_path).read_text() == "Y" * 5000
+
+
 @pytest.mark.asyncio
 async def test_wrapped_exception_returned_as_structured_error():
     """If the wrapped tool raises, the decorator returns a structured error."""

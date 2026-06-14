@@ -21,7 +21,7 @@ import os
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
-from .. import audit, engagement
+from .. import audit, engagement, untrusted
 
 
 def _autorecord_enabled() -> bool:
@@ -119,6 +119,40 @@ def _autorecord(tool_name: str, target: str, parsed: dict[str, Any]) -> None:
                 engagement.record_cred(
                     host, proto, str(user), str(secret), source_tool=tool_name,
                 )
+            except Exception:
+                pass
+
+
+def _mark_untrusted_output(result: dict[str, Any], tool_name: str, target: str) -> None:
+    """Bound the model-facing output and flag the result as untrusted data.
+
+    Mutates ``result`` in place: hands the model a bounded copy of
+    ``stdout``/``stderr`` (so a hostile target can't flood the context),
+    sets ``untrusted_output`` + ``untrusted_note``, and on truncation
+    mirrors the full ``stdout`` to the engagement loot store when
+    auto-record is on (best-effort — tool behavior never depends on it).
+    """
+    full_stdout = result.get("stdout") if isinstance(result.get("stdout"), str) else ""
+    truncated_for_model = False
+    for key in ("stdout", "stderr"):
+        val = result.get(key)
+        if isinstance(val, str):
+            bounded, was_cut = untrusted.bound(val)
+            if was_cut:
+                result[key] = bounded
+                truncated_for_model = True
+
+    result["untrusted_output"] = True
+    result["untrusted_note"] = untrusted.UNTRUSTED_NOTE
+
+    if truncated_for_model:
+        result["output_truncated_for_model"] = True
+        if _autorecord_enabled() and full_stdout:
+            blob = f"{tool_name}_{target}_output.txt".replace("/", "_").replace(":", "_")
+            try:
+                saved = engagement.write_loot(blob, full_stdout)
+                if saved.get("ok"):
+                    result["full_output_loot"] = saved.get("path")
             except Exception:
                 pass
 
@@ -228,6 +262,12 @@ def active_tool(
                 parsed = result.get("parsed") or {}
                 if isinstance(parsed, dict):
                     _autorecord(tool_name, target, parsed)
+
+            # Tool output is attacker-controlled (issue #11). Only mark a
+            # result that came from an actual subprocess — a pre-launch
+            # validation error_result has an empty argv and no output.
+            if result.get("argv"):
+                _mark_untrusted_output(result, tool_name, target)
 
             return {"ok": True, **result}
 
