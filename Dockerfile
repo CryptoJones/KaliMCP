@@ -7,11 +7,16 @@
 # Build:
 #   docker build -t kalimcp .
 #
-# Run as MCP server (stdio):
+# Run as MCP server (stdio) — the container runs as the non-root `kalimcp`
+# user, so mount the state dir at its home:
 #   docker run -i --rm \
-#       -v ~/.kalimcp:/root/.kalimcp \
-#       -v /var/log/kalimcp.log:/var/log/kalimcp.log \
+#       -v ~/.kalimcp:/home/kalimcp/.kalimcp \
 #       kalimcp
+#
+# nmap is granted cap_net_raw via setcap so SYN/OS scans work without root.
+# A tool that genuinely needs more (raw 802.11, etc.) can be re-enabled per
+# run with `--cap-add=NET_ADMIN` or, as a last resort, `--privileged` — the
+# image itself stays unprivileged.
 #
 # Wire into Claude Code via ~/.claude/mcp.json — see README.
 #
@@ -34,6 +39,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # enabled which MCP tool.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-pip python3-venv \
+        libcap2-bin \
         nmap \
         nikto \
         gobuster \
@@ -66,6 +72,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*
 
+# Grant nmap only the capabilities it needs (raw sockets for SYN/OS scans,
+# low-port bind) instead of running the whole container as root. Other
+# wrapped tools degrade gracefully without elevated privileges (e.g. nmap
+# falls back to a TCP connect scan). `|| true` keeps the build working on
+# arches/filesystems where setcap isn't applicable.
+RUN setcap cap_net_raw,cap_net_bind_service+eip "$(command -v nmap)" || true
+
 WORKDIR /opt/kalimcp
 
 # Install the Python package itself. Copying the manifest first
@@ -80,9 +93,17 @@ RUN python3 -m venv /opt/kalimcp/.venv \
     && /opt/kalimcp/.venv/bin/pip install --no-cache-dir --upgrade pip \
     && /opt/kalimcp/.venv/bin/pip install --no-cache-dir .
 
-# Default audit log path — caller bind-mounts a writable file here.
+# Run as an unprivileged user. Create it, give it the app + a home for the
+# engagement/loot/audit state, and drop to it for CMD.
+RUN useradd --create-home --uid 1000 --shell /bin/bash kalimcp \
+    && mkdir -p /home/kalimcp/.kalimcp \
+    && chown -R kalimcp:kalimcp /opt/kalimcp /home/kalimcp
+
 ENV PATH="/opt/kalimcp/.venv/bin:${PATH}" \
-    KALIMCP_LOG_FILE=/var/log/kalimcp.log
+    HOME=/home/kalimcp \
+    KALIMCP_LOG_FILE=/home/kalimcp/.kalimcp/kalimcp.log
+
+USER kalimcp
 
 # MCP servers talk JSON-RPC over stdio. Don't try to listen on a port.
 CMD ["kalimcp"]

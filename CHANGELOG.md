@@ -172,6 +172,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hash — so an operator can confirm loot transferred off the box intact and
   detect on-disk tampering. A tampered, truncated, or reference-less blob is
   never reported as verified.
+- **Container runs as a non-root user + per-binary setcap (#12).** The image
+  no longer runs as root: it creates an unprivileged `kalimcp` user (uid
+  1000) and drops to it for `CMD`. nmap is granted only
+  `cap_net_raw,cap_net_bind_service` via `setcap` (libcap2-bin) so SYN/OS
+  scans still work without container-wide root; other tools degrade
+  gracefully (e.g. nmap falls back to a TCP connect scan). A tool that
+  genuinely needs more can be re-enabled per run with `--cap-add=…` or, as a
+  last resort, `--privileged` — the image itself stays unprivileged. State
+  (engagement workspace + audit log) moves under the user's home
+  (`/home/kalimcp/.kalimcp`); the default `KALIMCP_LOG_FILE` points there so
+  the non-root process can write it. The run command bind-mounts
+  `~/.kalimcp:/home/kalimcp/.kalimcp`.
 
 - **Audit-log secret redaction is now fail-closed (#8).** `redact_argv`
   previously only redacted a secret when it was a standalone token
