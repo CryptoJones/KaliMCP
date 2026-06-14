@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — docs
+
+- **`docs/THREAT_MODEL.md` — prompt-injection threat model (#24).** A
+  structured threat model: actors and trust boundaries (the load-bearing
+  one is scanned-target → agent context), and a per-threat table (T1
+  prompt injection via tool output, T2 secret leakage, T3 command
+  injection, T4 flag/header injection, T5 workspace traversal, T6 resource
+  exhaustion, T7 audit-log exposure, T8 supply chain) mapped to the
+  mitigation that covers each. Explicit non-goals restate the
+  no-authorization-gate rule. `SECURITY.md` gains a prompt-injection /
+  untrusted-output section linking to it.
+
 ### Security
 
 - **Argv-only execution is now a tested invariant + exception output is
