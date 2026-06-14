@@ -41,6 +41,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for pre-launch validation errors (no subprocess ran). No scrubbing of the
   text itself — any content filter is bypassable and mangles real recon
   data; bounding + tagging are the honest mitigations.
+- **Per-invocation resource bounds + process registry (#13).** A wrapped
+  tool could run for hours, or an agent could fan out many scans in
+  parallel, exhausting host CPU / file descriptors. `run.run` now (1) holds
+  a slot in a global concurrency semaphore for the lifetime of each
+  subprocess — default 8, override `KALIMCP_MAX_CONCURRENCY`; calls past the
+  cap queue rather than pile on (this complements the existing per-tool
+  timeout and 2 MB output cap) — and (2) records every live subprocess in a
+  new `kalimcp.process_registry`. Two new MCP tools expose it: `process_list`
+  (running PIDs with binary, arg count, elapsed, timeout, engagement) and
+  `process_kill` (SIGTERM, or SIGKILL with `force=true`) so a runaway scan
+  can be stopped without killing the session. The listing is secret-free
+  (binary + arg count only — never the argv, which can carry a password) and
+  `process_kill` refuses any PID KaliMCP didn't launch.
 - **Audit-log secret redaction is now fail-closed (#8).** `redact_argv`
   previously only redacted a secret when it was a standalone token
   immediately after an exact-match secret flag, so two common shapes
