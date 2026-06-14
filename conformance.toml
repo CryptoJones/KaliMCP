@@ -1,0 +1,26 @@
+# mcp-conformance target config for KaliMCP.
+# Run from the repo root with the project venv present:
+#   /path/to/mcp-conformance/.venv/bin/mcp-conformance run
+#
+# KaliMCP wraps live offensive tools, so behavioural probes are restricted to a
+# few INERT, read-only tools — never a scanner/cracker. Protocol/schema contracts
+# cover the full tool surface.
+command = [".venv/bin/kalimcp"]
+
+[[probe]]
+tool = "health_check"
+
+[[probe]]
+tool = "process_list"
+
+[[probe]]
+tool = "wordlist_list"
+
+[[probe]]
+tool = "hash_identify"
+args = { value = "5f4dcc3b5aa765d61d8327deb882cf99" }
+
+[expect]
+max_output_chars = 200000
+# By design KaliMCP TAGS untrusted tool output rather than flagging injection in
+# its own inputs, so expect.injection is intentionally omitted.
