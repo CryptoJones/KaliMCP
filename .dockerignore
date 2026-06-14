@@ -22,8 +22,10 @@ dist
 tests
 scripts
 
-# Docs / project meta.
+# Docs / project meta. README.md is kept in the context — pyproject's
+# `readme = "README.md"` makes hatchling need it to build the wheel.
 *.md
+!README.md
 LICENSE
 
 # Runtime + secret artifacts that must never enter an image layer.

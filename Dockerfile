@@ -82,8 +82,10 @@ RUN setcap cap_net_raw,cap_net_bind_service+eip "$(command -v nmap)" || true
 WORKDIR /opt/kalimcp
 
 # Install the Python package itself. Copying the manifest first
-# keeps the deps layer cached when only source changed.
-COPY pyproject.toml ./
+# keeps the deps layer cached when only source changed. README.md is
+# copied too because pyproject declares `readme = "README.md"`, which
+# hatchling reads when building the wheel metadata.
+COPY pyproject.toml README.md ./
 COPY src ./src
 
 # Use a venv so we don't fight the system Python (Kali enforces
