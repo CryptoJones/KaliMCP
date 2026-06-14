@@ -274,8 +274,12 @@ python3 -m venv .venv
 .venv/bin/python -m pytest -q   # tests (no real subprocesses spawn)
 ```
 
-CI (Woodpecker + GitHub Actions) runs ruff, mypy, pip-audit, and pytest on
-Python 3.11 and 3.12, plus a hadolint pass on the Dockerfile. See
+CI (Woodpecker + GitHub Actions) runs ruff, mypy, pip-audit, a gitleaks
+secret scan, a syft CycloneDX SBOM, and pytest on Python 3.11 and 3.12,
+plus a hadolint pass on the Dockerfile. The Docker base image is pinned by
+digest (not the moving `kali-rolling` tag) for reproducible, tamper-evident
+builds — refresh it with `skopeo inspect --format '{{.Digest}}'
+docker://kalilinux/kali-rolling`. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the tool-wrapper checklist.
 
 ---

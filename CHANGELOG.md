@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `message` — a second secret sink #8 didn't cover, since a raw exception
   string can quote argv or a cred-bearing path — is now passed through the
   new `audit.redact_text()` before it reaches either the client or the log.
+- **Supply-chain hardening (#14).** The Docker base is now pinned by
+  digest (`kalilinux/kali-rolling@sha256:…`) instead of the moving
+  `kali-rolling` tag, so a build is reproducible and can't silently pull a
+  changed or tampered upstream image (refresh with `skopeo inspect`). CI
+  (both GitHub Actions and Woodpecker) gains a **gitleaks** secret scan and
+  a **syft** CycloneDX SBOM step, alongside the existing pip-audit CVE scan.
 - **Audit-log secret redaction is now fail-closed (#8).** `redact_argv`
   previously only redacted a secret when it was a standalone token
   immediately after an exact-match secret flag, so two common shapes
