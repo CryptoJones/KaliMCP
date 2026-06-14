@@ -104,6 +104,15 @@ clients):
 | `winrm_exec` | `netexec winrm -X` | one-shot PowerShell over WinRM |
 | `msfvenom_payload` | `msfvenom` | payload generation (NO Metasploit framework) |
 
+**Interactive sessions** (long-lived, keyed by session id; audited, not scope-gated)
+
+| Tool | Purpose |
+|------|---------|
+| `ssh_session_start` / `ssh_session_exec` / `ssh_session_stop` | persistent SSH via OpenSSH ControlMaster (reused master connection) |
+| `revshell_listen` / `revshell_exec` / `revshell_stop` | reverse-shell listener with non-blocking payload trigger |
+| `session_status` / `session_list` | inspect open sessions |
+| `system_network_info` | local interfaces + recommended LHOST (VPN-aware) |
+
 **Engagement workspace (agent working memory)**
 
 | Tool | Purpose |

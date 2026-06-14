@@ -58,6 +58,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         tshark \
         binutils \
         traceroute \
+        openssh-client \
+        sshpass \
+        netcat-traditional \
         wordlists seclists \
         ca-certificates \
         && apt-get clean \
