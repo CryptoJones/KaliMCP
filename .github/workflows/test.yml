@@ -90,5 +90,33 @@ jobs:
       - name: Run tests
         run: pytest -v --cov=kalimcp --cov-report=term-missing
 
+  conformance:
+    name: MCP conformance (live stdio)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Conformance suite
+        # mcp-conformance is a private repo, so this job is a graceful no-op until
+        # MCP_CONFORMANCE_TOKEN (a PAT with read access to it) is set in the repo's
+        # Actions secrets. Then it boots kalimcp over stdio and asserts the baseline
+        # contracts (see conformance.toml). A .venv is created so conformance.toml's
+        # `.venv/bin/kalimcp` command resolves the same as it does locally.
+        env:
+          MCP_CONFORMANCE_TOKEN: ${{ secrets.MCP_CONFORMANCE_TOKEN }}
+        run: |
+          if [ -z "$MCP_CONFORMANCE_TOKEN" ]; then
+            echo "MCP_CONFORMANCE_TOKEN not set — skipping conformance suite."
+            exit 0
+          fi
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -e .
+          .venv/bin/pip install "git+https://x-access-token:${MCP_CONFORMANCE_TOKEN}@github.com/CryptoJones/mcp-conformance.git"
+          .venv/bin/mcp-conformance run -- -q
+
 # Actions are pinned by commit SHA (see the trailing `# vX.Y.Z` comments) and
 # kept current by Dependabot (see .github/dependabot.yml).
