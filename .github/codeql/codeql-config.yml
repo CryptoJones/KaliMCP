@@ -1,0 +1,10 @@
+name: "KaliMCP CodeQL config"
+
+# SAST targets the shipped package only. Test files contain deliberate edge-case
+# patterns (fake hashes, command fixtures, private-attr access) that are benign in
+# test context but generate noise; analyzing src/ keeps findings actionable.
+paths:
+  - src
+
+paths-ignore:
+  - tests
