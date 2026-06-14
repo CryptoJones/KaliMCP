@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Argv-only execution is now a tested invariant + exception output is
+  redacted (#15).** Added `tests/test_invariants.py`, which fails CI if any
+  source file reintroduces a shell-string execution surface (`shell=True`,
+  `create_subprocess_shell`, `os.system`/`os.popen`, `subprocess.get*output`)
+  or if `run.run` stops launching via the argv-list `create_subprocess_exec`.
+  The same suite proves a newline- or control-char-bearing value can't forge
+  or corrupt an audit record (every field is JSON-encoded, so newlines/ANSI/
+  control chars are escaped, not written raw). Finally, the `tool_exception`
+  `message` — a second secret sink #8 didn't cover, since a raw exception
+  string can quote argv or a cred-bearing path — is now passed through the
+  new `audit.redact_text()` before it reaches either the client or the log.
 - **Audit-log secret redaction is now fail-closed (#8).** `redact_argv`
   previously only redacted a secret when it was a standalone token
   immediately after an exact-match secret flag, so two common shapes

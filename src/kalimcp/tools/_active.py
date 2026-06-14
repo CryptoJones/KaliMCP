@@ -156,28 +156,34 @@ def active_tool(
     def wrap(fn: Callable[..., Awaitable[dict[str, Any]]]):
         @functools.wraps(fn)
         async def inner(target: str, **kwargs) -> dict[str, Any]:
+            # Computed up front so both the exception sink and the argv
+            # log redact the same known secrets (see audit.redact_*).
+            secret_values = [
+                v for name in secret_kwarg_set
+                if isinstance(v := kwargs.get(name), str) and v
+            ]
             with audit.time_block() as elapsed:
                 try:
                     result = await fn(target=target, **kwargs)
                 except Exception as exc:
+                    # A raw exception string can quote argv, a cred-bearing
+                    # path, or a tool's own error text — redact known
+                    # secrets before it reaches the log *or* the client.
+                    message = audit.redact_text(str(exc), secret_values)
                     audit.log(
                         "tool_exception",
                         tool=tool_name,
                         target=target,
                         exception=type(exc).__name__,
-                        message=str(exc),
+                        message=message,
                     )
                     return {
                         "ok": False,
                         "error": "tool_exception",
-                        "message": str(exc),
+                        "message": message,
                     }
 
             raw_argv = result.get("argv", [])
-            secret_values = [
-                v for name in secret_kwarg_set
-                if isinstance(v := kwargs.get(name), str) and v
-            ]
             if secret_flag_set or secret_values:
                 logged_argv = audit.redact_argv(
                     raw_argv, secret_flag_set, secret_values,

@@ -147,6 +147,22 @@ def test_redact_noop_without_flags_or_values():
     assert audit.redact_argv(argv, None, []) == argv
 
 
+# ---------- redact_text (#15: the exception/error string sink) ----------
+
+
+def test_redact_text_replaces_secret_substring():
+    out = audit.redact_text("connect failed: user:hunter2@dc", ["hunter2"])
+    assert "hunter2" not in out
+    assert "sha256:" in out
+    assert "user:" in out and "@dc" in out  # surrounding text preserved
+
+
+def test_redact_text_skips_too_short_and_empty():
+    assert audit.redact_text("ab cd", ["ab"]) == "ab cd"  # < min length
+    assert audit.redact_text("", ["hunter2"]) == ""
+    assert audit.redact_text("nothing secret", None) == "nothing secret"
+
+
 # ---------- file mode (#10) ----------
 
 
