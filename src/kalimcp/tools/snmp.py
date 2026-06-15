@@ -85,7 +85,7 @@ def _parse_output(text: str) -> dict[str, Any]:
     return parsed
 
 
-@active_tool(tool_name="snmp-enum")
+@active_tool(tool_name="snmp-enum", secret_flags={"-c"})
 async def enumerate(
     *,
     target: str,
