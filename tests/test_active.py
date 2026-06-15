@@ -209,6 +209,32 @@ async def test_audit_log_redacts_secret_flag_values(tmp_path, monkeypatch):
     assert len(redacted) == 2
     for r in redacted:
         assert len(r) == len("sha256:") + 8
+
+
+async def test_snmp_enum_redacts_community_string(tmp_path, monkeypatch):
+    """The SNMP community string is a shared secret; it must not land in the audit argv."""
+    import json
+
+    from kalimcp import audit, run
+    from kalimcp.tools import snmp
+
+    log_path = tmp_path / "audit.log"
+    monkeypatch.setenv("KALIMCP_LOG_FILE", str(log_path))
+    audit.configure()
+
+    async def fake_run(argv, **_kwargs):
+        return {"exit_code": 0, "argv": list(argv), "stdout": "", "stderr": ""}
+
+    monkeypatch.setattr(run, "run", fake_run)
+    await snmp.enumerate(target="10.0.0.5", community="s3cr3t-community")
+
+    lines = log_path.read_text().strip().splitlines()
+    invoke = [json.loads(line) for line in lines if json.loads(line).get("event") == "tool_invoke"]
+    assert invoke, "no tool_invoke event written"
+    argv = invoke[-1]["argv"]
+    assert "-c" in argv  # the flag stays visible
+    assert "s3cr3t-community" not in argv  # but its value is redacted
+    assert any(t.startswith("sha256:") for t in argv)
     assert invoke[-1]["secrets_redacted"] is True
 
 
