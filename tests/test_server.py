@@ -124,6 +124,12 @@ EXPECTED_TOOLS = {
     "zap_baseline",
     "shodan_host",
     "shodan_search",
+    # reverse-tunnel pivots
+    "pivot_start",
+    "pivot_send",
+    "pivot_poll",
+    "pivot_stop",
+    "pivot_list",
 }
 
 

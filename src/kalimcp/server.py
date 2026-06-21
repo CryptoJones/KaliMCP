@@ -62,6 +62,7 @@ from .tools import (
     nmap,
     nuclei,
     passive,
+    pivot,
     reversing,
     shodan_lookup,
     smb,
@@ -1472,6 +1473,45 @@ async def shodan_search(query: str, api_key: str, limit: int = 20, timeout_secon
     External intel: reaches the Shodan API (needs a Shodan `api_key`), does NOT
     probe any target."""
     return await shodan_lookup.search(query, api_key=api_key, limit=limit, timeout_seconds=timeout_seconds)
+
+
+# ---------- reverse-tunnel pivots (Chisel / Ligolo-ng) ----------
+
+@mcp.tool()
+async def pivot_start(
+    tool: str = "chisel", port: int = 0, extra: str = "", wait_seconds: int = 2
+) -> dict:
+    """Start a reverse-tunnel listener (Chisel server / Ligolo-ng proxy) the
+    target connects back to — pivots into an internal segment when the target
+    has no SSH. Returns a `pivot_id` and an `operator_hint`: the command to run
+    ON THE TARGET to connect back. Long-running; poll with `pivot_poll`, drive
+    Ligolo's console with `pivot_send`."""
+    return await pivot.pivot_start(tool=tool, port=port, extra=extra, wait_seconds=wait_seconds)
+
+
+@mcp.tool()
+async def pivot_send(pivot_id: str, command: str) -> dict:
+    """Feed a console command to a pivot (Ligolo: `session` / `start` / `ifconfig`)
+    and return new output. For Chisel (non-interactive) this just drains output."""
+    return pivot.pivot_send(pivot_id, command)
+
+
+@mcp.tool()
+async def pivot_poll(pivot_id: str) -> dict:
+    """Drain new pivot output (new tunnel connections / status)."""
+    return pivot.pivot_poll(pivot_id)
+
+
+@mcp.tool()
+async def pivot_stop(pivot_id: str) -> dict:
+    """Terminate a pivot server and unregister it."""
+    return pivot.pivot_stop(pivot_id)
+
+
+@mcp.tool()
+async def pivot_list() -> dict:
+    """List active reverse-tunnel pivots (id, tool, port, alive)."""
+    return pivot.pivot_list()
 
 
 def main() -> int:

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — reverse-tunnel pivots (Chisel + Ligolo-ng)
+
+A second-source (Perplexity) cross-check of the common pentest toolset
+confirmed coverage was complete except for dedicated reverse-tunnel pivots —
+the "no SSH on the target, drop a small binary and tunnel back" case that
+`socks_start` (SSH dynamic SOCKS) can't cover.
+
+- `pivot_start` / `pivot_send` / `pivot_poll` / `pivot_stop` / `pivot_list` —
+  start a **Chisel** server (`chisel server -p <port> --reverse`) or a
+  **Ligolo-ng** proxy (`ligolo-proxy -selfcert -laddr 0.0.0.0:<port>`) the
+  target connects back to. Long-running listeners on the persistent-process
+  model (like the capture tools); `pivot_send` drives Ligolo's interactive
+  console (`session` / `start`). Each `pivot_start` returns an `operator_hint`
+  — the client/agent command to run on the target. No auth gates; list argv.
+- Dockerfile: both are Go binaries, built in the `gobuilder` stage
+  (`jpillora/chisel`, `nicocha30/ligolo-ng/cmd/proxy` → renamed `ligolo-proxy`)
+  and copied into the runtime — the Go toolchain still never ships.
+
 ### Fixed — correctness (adversarial CLI review of the new wrappers)
 
 Self-review of the gap-coverage wrappers against the real tool CLIs found

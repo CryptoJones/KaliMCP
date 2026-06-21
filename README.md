@@ -144,6 +144,7 @@ clients):
 | `socks_start` | SSH pivot with a dynamic SOCKS5 forward — route other tools into an internal segment |
 | `ssh_put` / `ssh_get` | file transfer to/from the target over an open SSH/SOCKS session (scp) |
 | `enum_upload_run` | upload a local-enum script (e.g. linpeas) and run it on the target |
+| `pivot_start` / `pivot_send` / `pivot_poll` / `pivot_stop` / `pivot_list` | reverse-tunnel pivots (Chisel server / Ligolo-ng proxy) for when the target has no SSH — the target connects back |
 | `session_status` / `session_list` | inspect open sessions |
 | `system_network_info` | local interfaces + recommended LHOST (VPN-aware) |
 

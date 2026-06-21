@@ -43,8 +43,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
     && go install github.com/sensepost/gowitness@latest \
-    && go install github.com/ropnop/kerbrute@latest
-# binaries land in /root/go/bin/{nuclei,gowitness,kerbrute}
+    && go install github.com/ropnop/kerbrute@latest \
+    && go install github.com/jpillora/chisel@latest \
+    && go install github.com/nicocha30/ligolo-ng/cmd/proxy@latest \
+    && mv /root/go/bin/proxy /root/go/bin/ligolo-proxy
+# binaries land in /root/go/bin/{nuclei,gowitness,kerbrute,chisel,ligolo-proxy}
+# (ligolo's cmd/proxy compiles to `proxy`; renamed so the wrapper's `ligolo-proxy` resolves)
 
 
 # ---- runtime stage ----
@@ -114,7 +118,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # nuclei + gowitness + kerbrute: copy the binaries compiled in the gobuilder
 # stage onto PATH. The Go toolchain itself never enters this image.
-COPY --from=gobuilder /root/go/bin/nuclei /root/go/bin/gowitness /root/go/bin/kerbrute /usr/local/bin/
+COPY --from=gobuilder /root/go/bin/nuclei /root/go/bin/gowitness /root/go/bin/kerbrute \
+     /root/go/bin/chisel /root/go/bin/ligolo-proxy /usr/local/bin/
 
 # OWASP ZAP (zaproxy) pulls a full JRE — the single heaviest apt package here.
 # Gated behind INCLUDE_ZAP so a lean build can skip it.
