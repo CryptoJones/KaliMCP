@@ -2,7 +2,7 @@
 # Copyright 2026 Aaron K. Clark
 """Export an engagement's findings store as a report (issue #18).
 
-Three formats, all built from the standard library (no heavy template /
+Five formats, all built from the standard library (no heavy template /
 PDF deps):
 
 * **markdown** — a human-readable engagement report.
@@ -11,6 +11,11 @@ PDF deps):
   artifacts are attached when a finding's payload carries HTTP evidence.
 * **junit** — JUnit XML; ``error``-severity findings become ``<failure>``
   so a CI run that imports it goes red.
+* **client** — a deliverable-shaped report: executive summary, severity
+  rollup, per-finding remediation, and CVSS where the payload carries it.
+  Unlike SARIF/JUnit (CI-shaped) this is the hand-to-the-customer artifact.
+* **html** — the ``client`` report wrapped in a minimal, self-contained
+  HTML document (no external CSS/JS), suitable for emailing or printing.
 
 Credential *secrets* are masked in every format — a report is a
 shareable artifact and must not spill plaintext from ``creds.jsonl``.
@@ -29,7 +34,7 @@ try:
 except Exception:  # pragma: no cover - version is always present
     _VERSION = "0"
 
-FORMATS = ("markdown", "sarif", "junit")
+FORMATS = ("markdown", "sarif", "junit", "client", "html")
 
 # Finding category -> SARIF level (error / warning / note). A payload
 # ``severity`` overrides this when present.
@@ -39,6 +44,72 @@ _CATEGORY_LEVEL: dict[str, str] = {
     "xss": "warning", "misconfig": "warning", "disclosure": "warning",
     "host": "note", "service": "note", "subdomain": "note", "port": "note",
 }
+
+# Severity buckets for the client deliverable, ordered most→least severe.
+_SEVERITY_ORDER = ("Critical", "High", "Medium", "Low", "Info")
+
+# Finding category -> default severity bucket, used when the payload does
+# not carry an explicit ``severity``.
+_CATEGORY_SEVERITY: dict[str, str] = {
+    "sqli": "Critical", "rce": "Critical", "secret_dump": "Critical",
+    "cred": "Critical", "auth_bypass": "Critical",
+    "ssrf": "High", "xss": "High",
+    "misconfig": "Medium", "disclosure": "Medium",
+    "host": "Info", "service": "Info", "subdomain": "Info", "port": "Info",
+}
+
+# Short, generic remediation hints keyed by finding category. These are
+# advisory boilerplate for the deliverable, not authoritative guidance.
+_CATEGORY_REMEDIATION: dict[str, str] = {
+    "sqli": "Use parameterized queries / prepared statements; validate and "
+            "least-privilege the database account.",
+    "rce": "Patch the affected component, drop untrusted input from command "
+           "execution paths, and restrict outbound egress.",
+    "secret_dump": "Rotate all exposed secrets immediately and move them into "
+                   "a managed secrets store.",
+    "cred": "Rotate the affected credentials and enforce MFA on the account.",
+    "auth_bypass": "Enforce server-side authorization on every request; do not "
+                   "trust client-supplied identity.",
+    "ssrf": "Restrict outbound requests to an allow-list and block access to "
+            "internal/metadata addresses.",
+    "xss": "Context-encode all output and apply a strict Content-Security-Policy.",
+    "misconfig": "Harden the service to a known baseline and remove default "
+                 "or unnecessary configuration.",
+    "disclosure": "Remove sensitive data from responses and suppress verbose "
+                  "error/version banners.",
+    "host": "Confirm the host is in scope and inventory its exposed services.",
+    "service": "Review the exposed service; restrict access and keep it patched.",
+    "subdomain": "Confirm ownership and decommission stale or forgotten hosts.",
+    "port": "Close unneeded ports and firewall management interfaces.",
+}
+
+_GENERIC_REMEDIATION = (
+    "Validate the finding, restrict exposure, and apply vendor-recommended "
+    "hardening for the affected component."
+)
+
+
+def _severity(finding: dict[str, Any]) -> str:
+    """Map a finding to one of ``_SEVERITY_ORDER`` for the client report.
+
+    Order of precedence: payload ``severity`` -> category default -> Info.
+    """
+    payload = finding.get("payload") or {}
+    sev = str(payload.get("severity", "")).strip().lower()
+    aliases = {
+        "critical": "Critical", "crit": "Critical",
+        "high": "High",
+        "medium": "Medium", "moderate": "Medium",
+        "low": "Low",
+        "info": "Info", "informational": "Info", "none": "Info",
+    }
+    if sev in aliases:
+        return aliases[sev]
+    return _CATEGORY_SEVERITY.get(finding.get("category", ""), "Info")
+
+
+def _remediation(finding: dict[str, Any]) -> str:
+    return _CATEGORY_REMEDIATION.get(finding.get("category", ""), _GENERIC_REMEDIATION)
 
 
 def _level(finding: dict[str, Any]) -> str:
@@ -82,8 +153,12 @@ def generate(fmt: str, *, name: str | None = None) -> dict[str, Any]:
         content = _markdown(st, findings, creds)
     elif f == "sarif":
         content = _sarif(st, findings)
-    else:
+    elif f == "junit":
         content = _junit(st, findings)
+    elif f == "client":
+        content = _client_markdown(st, findings, creds)
+    else:
+        content = _client_html(st, findings, creds)
     return {
         "ok": True,
         "format": f,
@@ -140,6 +215,206 @@ def _markdown(st: dict[str, Any], findings: list[dict], creds: list[dict]) -> st
         lines.append("_No credentials recorded._")
     lines.append("")
     return "\n".join(lines)
+
+
+# ---------- client deliverable ----------
+
+def _severity_counts(findings: list[dict]) -> dict[str, int]:
+    counts = {sev: 0 for sev in _SEVERITY_ORDER}
+    for fnd in findings:
+        counts[_severity(fnd)] += 1
+    return counts
+
+
+def _group_by_severity(findings: list[dict]) -> dict[str, list[dict]]:
+    groups: dict[str, list[dict]] = {sev: [] for sev in _SEVERITY_ORDER}
+    for fnd in findings:
+        groups[_severity(fnd)].append(fnd)
+    return groups
+
+
+def _detail(finding: dict[str, Any]) -> str:
+    payload = finding.get("payload") or {}
+    detail = (
+        payload.get("evidence")
+        or payload.get("detail")
+        or payload.get("title")
+        or payload.get("summary")
+        or ""
+    )
+    return str(detail)
+
+
+def _host_count(findings: list[dict], creds: list[dict]) -> int:
+    hosts = {f.get("host") for f in findings if f.get("host")}
+    hosts |= {c.get("host") for c in creds if c.get("host")}
+    return len(hosts)
+
+
+def _client_markdown(st: dict[str, Any], findings: list[dict], creds: list[dict]) -> str:
+    name = st.get("name", "?")
+    started = st.get("started_at") or "—"
+    counts = _severity_counts(findings)
+    hosts = _host_count(findings, creds)
+
+    lines: list[str] = []
+    lines.append(f"# Security Assessment Report — {name}")
+    lines.append("")
+    lines.append(f"_Prepared for engagement **{name}** "
+                 f"(started {started})._")
+    lines.append("")
+
+    # ----- Executive Summary -----
+    lines.append("## Executive Summary")
+    lines.append("")
+    lines.append(f"This assessment recorded **{len(findings)}** finding(s) "
+                 f"across **{hosts}** host(s), and captured "
+                 f"**{len(creds)}** credential(s).")
+    lines.append("")
+    lines.append("| Severity | Count |")
+    lines.append("|----------|-------|")
+    for sev in _SEVERITY_ORDER:
+        lines.append(f"| {sev} | {counts[sev]} |")
+    lines.append("")
+
+    # ----- Findings, grouped by severity -----
+    lines.append("## Findings")
+    lines.append("")
+    if findings:
+        groups = _group_by_severity(findings)
+        for sev in _SEVERITY_ORDER:
+            bucket = groups[sev]
+            if not bucket:
+                continue
+            lines.append(f"### {sev} ({len(bucket)})")
+            lines.append("")
+            lines.append("| Host | Category | Source | CVSS | Detail |")
+            lines.append("|------|----------|--------|------|--------|")
+            for fnd in bucket:
+                payload = fnd.get("payload") or {}
+                cvss = payload.get("cvss")
+                cvss_s = str(cvss) if cvss not in (None, "") else "—"
+                detail = _detail(fnd).replace("|", "\\|").replace("\n", " ")[:200]
+                lines.append(
+                    f"| {fnd.get('host', '')} | {fnd.get('category', '')} "
+                    f"| {fnd.get('source_tool', '') or '—'} | {cvss_s} | {detail} |"
+                )
+            lines.append("")
+            for fnd in bucket:
+                host = fnd.get("host", "?")
+                cat = fnd.get("category", "finding")
+                lines.append(f"- **Remediation** ({cat} on {host}): {_remediation(fnd)}")
+            lines.append("")
+    else:
+        lines.append("_No findings recorded._")
+        lines.append("")
+
+    # ----- Credentials (masked) -----
+    lines.append("## Credentials Captured")
+    lines.append("")
+    if creds:
+        lines.append(f"**{len(creds)}** credential(s) were captured during the "
+                     "engagement. Secrets are masked in this deliverable.")
+        lines.append("")
+        for c in creds:
+            user = c.get("user", "") or "—"
+            host = c.get("host", "") or "—"
+            proto = c.get("proto", "") or "—"
+            lines.append(f"- `{user}@{host}` via {proto} — secret `********`")
+        lines.append("")
+        lines.append("_Plaintext secrets are never included in exported reports; "
+                     "read them from the engagement `creds.jsonl` (mode 0600) on "
+                     "the host._")
+    else:
+        lines.append("_No credentials captured._")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _client_html(st: dict[str, Any], findings: list[dict], creds: list[dict]) -> str:
+    """Wrap the client markdown's content in a minimal, self-contained HTML doc.
+
+    No markdown library is available (stdlib only), so this renders the same
+    sections directly as HTML rather than converting the markdown string.
+    """
+    from html import escape as _esc
+
+    name = st.get("name", "?")
+    started = st.get("started_at") or "—"
+    counts = _severity_counts(findings)
+    hosts = _host_count(findings, creds)
+
+    parts: list[str] = []
+    parts.append("<!DOCTYPE html>")
+    parts.append('<html lang="en"><head><meta charset="utf-8">')
+    parts.append(f"<title>Security Assessment Report — {_esc(str(name))}</title>")
+    parts.append(
+        "<style>body{font-family:system-ui,Arial,sans-serif;margin:2rem;"
+        "max-width:60rem}table{border-collapse:collapse;width:100%}"
+        "th,td{border:1px solid #ccc;padding:.4rem;text-align:left}"
+        "th{background:#f3f3f3}code{background:#f3f3f3;padding:0 .2rem}"
+        "h3{margin-top:1.5rem}</style></head><body>"
+    )
+    parts.append(f"<h1>Security Assessment Report — {_esc(str(name))}</h1>")
+    parts.append(f"<p><em>Prepared for engagement <strong>{_esc(str(name))}</strong> "
+                 f"(started {_esc(str(started))}).</em></p>")
+
+    parts.append("<h2>Executive Summary</h2>")
+    parts.append(f"<p>This assessment recorded <strong>{len(findings)}</strong> "
+                 f"finding(s) across <strong>{hosts}</strong> host(s), and "
+                 f"captured <strong>{len(creds)}</strong> credential(s).</p>")
+    parts.append("<table><thead><tr><th>Severity</th><th>Count</th></tr></thead><tbody>")
+    for sev in _SEVERITY_ORDER:
+        parts.append(f"<tr><td>{sev}</td><td>{counts[sev]}</td></tr>")
+    parts.append("</tbody></table>")
+
+    parts.append("<h2>Findings</h2>")
+    if findings:
+        groups = _group_by_severity(findings)
+        for sev in _SEVERITY_ORDER:
+            bucket = groups[sev]
+            if not bucket:
+                continue
+            parts.append(f"<h3>{sev} ({len(bucket)})</h3>")
+            parts.append("<table><thead><tr><th>Host</th><th>Category</th>"
+                         "<th>Source</th><th>CVSS</th><th>Detail</th>"
+                         "<th>Remediation</th></tr></thead><tbody>")
+            for fnd in bucket:
+                payload = fnd.get("payload") or {}
+                cvss = payload.get("cvss")
+                cvss_s = _esc(str(cvss)) if cvss not in (None, "") else "—"
+                parts.append(
+                    "<tr>"
+                    f"<td>{_esc(str(fnd.get('host', '')))}</td>"
+                    f"<td>{_esc(str(fnd.get('category', '')))}</td>"
+                    f"<td>{_esc(str(fnd.get('source_tool', '') or '—'))}</td>"
+                    f"<td>{cvss_s}</td>"
+                    f"<td>{_esc(_detail(fnd)[:200])}</td>"
+                    f"<td>{_esc(_remediation(fnd))}</td>"
+                    "</tr>"
+                )
+            parts.append("</tbody></table>")
+    else:
+        parts.append("<p><em>No findings recorded.</em></p>")
+
+    parts.append("<h2>Credentials Captured</h2>")
+    if creds:
+        parts.append(f"<p><strong>{len(creds)}</strong> credential(s) were "
+                     "captured. Secrets are masked in this deliverable.</p><ul>")
+        for c in creds:
+            user = _esc(str(c.get("user", "") or "—"))
+            host = _esc(str(c.get("host", "") or "—"))
+            proto = _esc(str(c.get("proto", "") or "—"))
+            parts.append(f"<li><code>{user}@{host}</code> via {proto} — "
+                         "secret <code>********</code></li>")
+        parts.append("</ul><p><em>Plaintext secrets are never included in "
+                     "exported reports; read them from the engagement "
+                     "<code>creds.jsonl</code> (mode 0600) on the host.</em></p>")
+    else:
+        parts.append("<p><em>No credentials captured.</em></p>")
+
+    parts.append("</body></html>")
+    return "\n".join(parts)
 
 
 # ---------- sarif ----------

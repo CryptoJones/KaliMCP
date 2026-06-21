@@ -85,6 +85,45 @@ EXPECTED_TOOLS = {
     "oast_register",
     "oast_poll",
     "oast_stop",
+    # Pentest gap-coverage: recon baseline
+    "nuclei_scan",
+    "subfinder_enum",
+    "httpx_probe",
+    "dnsx_resolve",
+    "wpscan_scan",
+    "gowitness_capture",
+    # AD analysis
+    "certipy_find",
+    "certipy_request",
+    "bloodhound_collect",
+    # traversal / pivoting
+    "socks_start",
+    "ssh_put",
+    "ssh_get",
+    "enum_upload_run",
+    # credential-capture listeners
+    "capture_start",
+    "capture_poll",
+    "capture_stop",
+    "capture_list",
+    # cloud audit (Tier 3)
+    "cloud_scoutsuite",
+    "cloud_prowler",
+    "cloud_kube_hunter",
+    # exploitation / delivery (Tier 3)
+    "msf_run_module",
+    # reverse engineering / loot triage
+    "gdb_inspect",
+    "r2_analyze",
+    # engagement correlation
+    "host_correlate",
+    "findings_dedupe",
+    # gap-coverage round 2
+    "kerbrute_userenum",
+    "kerbrute_passwordspray",
+    "zap_baseline",
+    "shodan_host",
+    "shodan_search",
 }
 
 

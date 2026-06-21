@@ -81,6 +81,12 @@ clients):
 | `snmp_enum` | `snmp-check` | SNMP enumeration (hostname / contact / processes / software) |
 | `ldap_enum` | `ldapsearch` | anonymous LDAP rootDSE query (naming contexts / vendor) |
 | `traceroute_path` | `traceroute` | network path discovery (`-n`, no DNS) |
+| `nuclei_scan` | `nuclei` | templated vulnerability scanning (severity / tags / custom templates) |
+| `httpx_probe` | `httpx` | web probe — status / title / tech-detect / server banner |
+| `dnsx_resolve` | `dnsx` | active DNS resolution (JSON records) |
+| `wpscan_scan` | `wpscan` | WordPress version / vulnerable plugins+themes / users (API token redacted) |
+| `gowitness_capture` | `gowitness` | headless-Chrome screenshot → engagement `screenshots/` dir |
+| `zap_baseline` | `zaproxy` | OWASP ZAP headless baseline/quick web scan; parsed alert list |
 
 **Auth & credentials**
 
@@ -102,7 +108,32 @@ clients):
 | `impacket_secretsdump` | `secretsdump.py` | SAM / LSA / NTDS dump (incl. DCSync) |
 | `impacket_smbclient` | `smbclient.py` | one-shot SMB shell command |
 | `winrm_exec` | `netexec winrm -X` | one-shot PowerShell over WinRM |
-| `msfvenom_payload` | `msfvenom` | payload generation (NO Metasploit framework) |
+| `msfvenom_payload` | `msfvenom` | payload generation (bytes to disk, not served inline) |
+| `certipy_find` | `certipy` | AD CS enumeration — flags ESC1-16 vulnerable templates / CAs |
+| `certipy_request` | `certipy` | request a cert from a CA (ESC1-style abuse) → `.pfx` |
+| `bloodhound_collect` | `bloodhound-python` | collect the AD graph to a `.zip` for BloodHound ingest |
+| `kerbrute_userenum` | `kerbrute` | Kerberos pre-auth AD username enumeration (no lockout, low noise) |
+| `kerbrute_passwordspray` | `kerbrute` | spray one password across an AD user list via Kerberos (password redacted) |
+
+**Exploitation / delivery** (Tier 3 — crosses from capability into delivery; audited, not gated)
+
+| Tool | Wraps | Purpose |
+|------|-------|---------|
+| `msf_run_module` | `msfconsole -x` | run a Metasploit module against a target (RHOSTS); can open a session |
+
+**Credential-capture listeners** (long-lived; start → poll for captured NetNTLM hashes)
+
+| Tool | Wraps | Purpose |
+|------|-------|---------|
+| `capture_start` / `capture_poll` / `capture_stop` / `capture_list` | `responder` / `mitm6` / `ntlmrelayx` | LLMNR/NBT-NS poisoning, IPv6 DNS takeover, NTLM relay |
+
+**Cloud audit** (Tier 3 — audit a cloud account via local creds; no single target host)
+
+| Tool | Wraps | Purpose |
+|------|-------|---------|
+| `cloud_scoutsuite` | `scout` | multi-cloud config audit (aws/azure/gcp/aliyun/oci) |
+| `cloud_prowler` | `prowler` | cloud-security checks (OCSF JSON) |
+| `cloud_kube_hunter` | `kube-hunter` | Kubernetes weakness scan (`--remote` or in-cluster) |
 
 **Interactive sessions** (long-lived, keyed by session id; audited, not scope-gated)
 
@@ -110,6 +141,9 @@ clients):
 |------|---------|
 | `ssh_session_start` / `ssh_session_exec` / `ssh_session_stop` | persistent SSH via OpenSSH ControlMaster (reused master connection) |
 | `revshell_listen` / `revshell_exec` / `revshell_stop` | reverse-shell listener with non-blocking payload trigger |
+| `socks_start` | SSH pivot with a dynamic SOCKS5 forward — route other tools into an internal segment |
+| `ssh_put` / `ssh_get` | file transfer to/from the target over an open SSH/SOCKS session (scp) |
+| `enum_upload_run` | upload a local-enum script (e.g. linpeas) and run it on the target |
 | `session_status` / `session_list` | inspect open sessions |
 | `system_network_info` | local interfaces + recommended LHOST (VPN-aware) |
 
@@ -123,7 +157,9 @@ clients):
 | `cred_record` / `cred_query` | credential cache (file mode 0600) |
 | `loot_write` / `loot_list` / `loot_read` / `loot_verify` | extracted blob store (0600, SHA-256-verified) |
 | `note_append` | operator free-form notes.md |
-| `report_export` | export findings as Markdown / SARIF / JUnit (secrets masked) |
+| `host_correlate` | per-host rollup of findings + creds (the analysis layer) |
+| `findings_dedupe` | deduplicated view of findings (read-only; JSONL stays append-only) |
+| `report_export` | export as Markdown / SARIF / JUnit / `client` (deliverable) / `html` (secrets masked) |
 | `oast_start` / `oast_register` / `oast_poll` / `oast_stop` | self-hosted OOB callback catcher for blind-vuln detection |
 | `wordlist_list` | enumerate wordlists under `/usr/share/wordlists` + seclists |
 | `process_list` | list running tool subprocesses (PID, binary, elapsed) |
@@ -153,6 +189,9 @@ tearing down the session.
 | `cve_search` | NIST NVD | CVE lookup by ID / keyword → CVSS + description |
 | `cve_package_audit` | OSV.dev | dependency / supply-chain vuln lookup |
 | `hash_identify` | (offline) | hash type → hashcat `-m` mode + john `--format` |
+| `subfinder_enum` | `subfinder` | passive subdomain OSINT (public sources, no target probe) |
+| `shodan_host` | Shodan API | host intel by IP (ports/hostnames/org/vulns); needs an API key |
+| `shodan_search` | Shodan API | query Shodan's index for matching hosts; needs an API key |
 
 **Loot triage** (read-only analysis of a file already on disk)
 
@@ -162,6 +201,8 @@ tearing down the session.
 | `strings_extract` | `strings` | printable strings from a binary |
 | `nm_symbols` | `nm` | symbol table (optional demangle / dynamic) |
 | `objdump_inspect` | `objdump` | headers / sections / symbols / disassembly |
+| `gdb_inspect` | `gdb` | batch-mode inspection of an on-disk binary (one `-ex` command) |
+| `r2_analyze` | `radare2` | radare2 analysis of an on-disk binary (one `-c` command string) |
 
 ---
 
@@ -266,26 +307,29 @@ affect tool execution. `KALIMCP_NO_LOG=1` disables it entirely
 
 ## What's NOT here
 
-The v0.4 → v0.9 red-team overhaul is shipped: recon, web-vuln,
-auth/credential, Windows AD post-exploit, and the engagement
-workspace are all live (see the Status table). What's
+The v0.4 → v0.9 red-team overhaul plus the pentest gap-coverage
+phase are shipped: recon (incl. nuclei + the ProjectDiscovery
+trio), web-vuln, auth/credential, Windows AD post-exploit and
+analysis (BloodHound collection, Certipy AD CS, Responder/relay
+capture), traversal (SOCKS pivot + file transfer), exploitation
+(Metasploit module delivery), cloud audit, and the engagement
+workspace are all live (see the Status table). What's still
 deliberately left out:
 
-- **Go-binary recon tools not in the Kali apt repos** — subfinder,
-  amass, feroxbuster, gowitness, kerbrute. These need curl-install
-  layers or a Go builder stage in the Dockerfile; deferred to a
-  follow-up phase. The `screenshots/` dir in each engagement is
-  reserved for a future `gowitness`-backed screenshot tool.
+- **BloodHound *graph querying*** — `bloodhound_collect` gathers the
+  AD graph to a `.zip`, but path analysis runs in the neo4j-backed
+  BloodHound GUI the operator ingests it into; the server doesn't
+  embed neo4j.
 - **evil-winrm's interactive shell** — `winrm_exec` covers
   single-shot PowerShell over WinRM (`netexec winrm -X`); there's
   no persistent interactive session.
-- **The Metasploit framework's exploit modules and the
-  `msfconsole` driver.** The `metasploit-framework` package is
-  installed only to provide `msfvenom`. `msfvenom_payload` is
-  payload generation only — output is written to disk under
-  `~/.kalimcp/payloads/` (operators retrieve the binary
-  themselves) so the MCP server never serves executable bytes
-  inline.
+- **Pacu (AWS exploitation REPL)** — intentionally omitted: it's an
+  interactive shell, not a one-shot non-interactive command, so it
+  doesn't fit the wrap-a-CLI model. ScoutSuite/Prowler cover cloud
+  *audit*.
+- **Wireless / physical / mobile** — out of scope by nature: they
+  need radio hardware or a device, which a stdio container can't
+  provide.
 
 ---
 
@@ -302,7 +346,7 @@ deliberately left out:
 | v0.7 | credential operations: netexec, medusa, john, hashcat; argv-secret redaction in audit log | shipped |
 | v0.8 | Windows AD post-exploit: impacket suite (NPUsers/UserSPNs/secretsdump/smbclient), winrm_exec, msfvenom payload generation | shipped |
 | v0.9 | engagement workspace (`~/.kalimcp/engagements/<name>/`) — findings/creds/loot/screenshots + scope-warning audit + auto-record hook | shipped |
-| (later) | Go-binary recon tools (subfinder, feroxbuster, gowitness, kerbrute) — need curl-install layers in Dockerfile | planned |
+| (gap-coverage) | recon baseline (nuclei, subfinder/httpx/dnsx, wpscan, gowitness); AD analysis (BloodHound collect, Certipy, Responder/mitm6/ntlmrelayx capture); traversal (SOCKS pivot, scp put/get, linpeas runner); exploitation (Metasploit module delivery); cloud audit (ScoutSuite/Prowler/kube-hunter); RE (gdb/radare2); correlation + client/HTML reports | shipped |
 
 See [CHANGELOG.md](CHANGELOG.md) for the per-release detail.
 

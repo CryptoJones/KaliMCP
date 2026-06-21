@@ -30,6 +30,24 @@
 # then update the pin below (the `:kali-rolling` tag is kept alongside the
 # digest purely as a human-readable label — Docker resolves by digest).
 
+# ---- builder stage: compile the Go tools that aren't in the Kali apt repos ----
+# nuclei + gowitness ship only as Go source. Build them in a throwaway stage so
+# the Go toolchain (golang-go, ~hundreds of MB) never lands in the runtime image
+# — only the two compiled binaries are copied across.
+FROM kalilinux/kali-rolling@sha256:6ae2813f51a2adf265e0a740c5fe3645406a8fc39711a45386aa43f036c79bd5 AS gobuilder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        golang-go git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
+    && go install github.com/sensepost/gowitness@latest \
+    && go install github.com/ropnop/kerbrute@latest
+# binaries land in /root/go/bin/{nuclei,gowitness,kerbrute}
+
+
+# ---- runtime stage ----
 FROM kalilinux/kali-rolling@sha256:6ae2813f51a2adf265e0a740c5fe3645406a8fc39711a45386aa43f036c79bd5
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -69,15 +87,59 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         netcat-traditional \
         wordlists seclists \
         ca-certificates \
+        \
+        # --- pentest gap-coverage additions ---
+        subfinder \
+        dnsx \
+        httpx-toolkit \
+        wpscan \
+        gdb \
+        radare2 \
+        responder \
+        mitm6 \
+        bloodhound.py \
+        proxychains4 \
+        chromium \
+        zaproxy \
+        pipx \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*
 
+# nuclei + gowitness + kerbrute: copy the binaries compiled in the gobuilder
+# stage onto PATH. The Go toolchain itself never enters this image.
+COPY --from=gobuilder /root/go/bin/nuclei /root/go/bin/gowitness /root/go/bin/kerbrute /usr/local/bin/
+
+# Tier-3 cloud-audit tools (ScoutSuite -> `scout`, Prowler, kube-hunter) are
+# large and not in Kali apt. Install them isolated via pipx into a shared
+# location so the unprivileged runtime user can run them. (This is the
+# heaviest part of the image; drop this block if you don't need cloud audit.)
+ENV PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/opt/pipx/bin
+# kube-hunter has a native dependency with no prebuilt arm64 wheel, so it
+# builds from sdist and needs a C toolchain + Python headers at install time.
+# Install them just for this layer and purge them in the same RUN so the
+# runtime image stays slim (the built wheels don't need a compiler).
+RUN apt-get update && apt-get install -y --no-install-recommends gcc python3-dev \
+    && pipx install scoutsuite \
+    && pipx install prowler \
+    && pipx install kube-hunter \
+    && apt-get purge -y gcc python3-dev && apt-get autoremove -y \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Grant nmap only the capabilities it needs (raw sockets for SYN/OS scans,
-# low-port bind) instead of running the whole container as root. Other
-# wrapped tools degrade gracefully without elevated privileges (e.g. nmap
-# falls back to a TCP connect scan). `|| true` keeps the build working on
-# arches/filesystems where setcap isn't applicable.
-RUN setcap cap_net_raw,cap_net_bind_service+eip "$(command -v nmap)" || true
+# low-port bind) instead of running the whole container as root. Two
+# Kali-specific subtleties (both verified by running `nmap -sS` as the
+# unprivileged user in the built image):
+#   1. /usr/bin/nmap is a wrapper *script* that execs the real ELF at
+#      /usr/lib/nmap/nmap — file caps must go on the real binary, not the
+#      script (caps on a #!-script are silently ignored).
+#   2. The Kali package ships the binary with cap_net_admin set, but Docker's
+#      default capability bounding set excludes NET_ADMIN, and a binary with
+#      an *effective* cap outside the bounding set fails execve with EPERM
+#      (so nmap won't even start). We pin it to exactly the two caps in
+#      Docker's default set; -sS/-O don't need NET_ADMIN.
+# `|| true` keeps the build working on arches/filesystems where setcap is N/A.
+RUN NMAP_BIN="$(readlink -f /usr/lib/nmap/nmap 2>/dev/null || command -v nmap)" \
+    && setcap cap_net_raw,cap_net_bind_service+eip "$NMAP_BIN" || true
 
 WORKDIR /opt/kalimcp
 
@@ -91,9 +153,11 @@ COPY src ./src
 # Use a venv so we don't fight the system Python (Kali enforces
 # PEP 668 — pip install --user requires --break-system-packages or
 # a venv).
+# certipy-ad is installed into the same venv (it exposes the `certipy` binary
+# the AD CS wrapper invokes; the Kali apt package renames it to `certipy-ad`).
 RUN python3 -m venv /opt/kalimcp/.venv \
     && /opt/kalimcp/.venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /opt/kalimcp/.venv/bin/pip install --no-cache-dir .
+    && /opt/kalimcp/.venv/bin/pip install --no-cache-dir . certipy-ad
 
 # Run as an unprivileged user. Create it, give it the app + a home for the
 # engagement/loot/audit state, and drop to it for CMD.
@@ -101,7 +165,7 @@ RUN useradd --create-home --uid 1000 --shell /bin/bash kalimcp \
     && mkdir -p /home/kalimcp/.kalimcp \
     && chown -R kalimcp:kalimcp /opt/kalimcp /home/kalimcp
 
-ENV PATH="/opt/kalimcp/.venv/bin:${PATH}" \
+ENV PATH="/opt/kalimcp/.venv/bin:/opt/pipx/bin:${PATH}" \
     HOME=/home/kalimcp \
     KALIMCP_LOG_FILE=/home/kalimcp/.kalimcp/kalimcp.log
 

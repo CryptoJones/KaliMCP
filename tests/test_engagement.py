@@ -182,6 +182,74 @@ def test_list_hosts_dedupes_across_findings_and_creds(workspace):
     assert hosts == ["10.0.0.10", "10.0.0.5", "api.example.com"]
 
 
+# ---------- correlation / analysis ----------
+
+def test_correlate_hosts_groups_findings_and_creds(workspace):
+    workspace.create("op")
+    workspace.use("op")
+    # nmap-style finding (carries ports) on host A.
+    workspace.record_finding(
+        "host", "10.0.0.5", {"ports": [22, 80]}, source_tool="nmap",
+    )
+    # second finding on host A, different category.
+    workspace.record_finding(
+        "smb", "10.0.0.5", {"evidence": "signing disabled"}, source_tool="netexec",
+    )
+    # httpx-style finding (carries url) on host B.
+    workspace.record_finding(
+        "web", "api.example.com",
+        {"url": "https://api.example.com/"}, source_tool="httpx",
+    )
+    # a cred on host A.
+    workspace.record_cred("10.0.0.5", "ssh", "alice", "hunter2", source_tool="hydra")
+
+    result = workspace.correlate_hosts()
+    assert result["count"] == 2
+    by_host = {h["host"]: h for h in result["hosts"]}
+    assert set(by_host) == {"10.0.0.5", "api.example.com"}
+
+    a = by_host["10.0.0.5"]
+    assert a["finding_count"] == 2
+    assert a["categories"] == ["host", "smb"]
+    assert "22" in a["services"] and "80" in a["services"]
+    assert a["source_tools"] == ["hydra", "netexec", "nmap"]
+    # cred user is present; the secret must never appear.
+    assert a["creds"] == [{"user": "alice", "proto": "ssh"}]
+    assert "hunter2" not in json.dumps(result)
+
+    b = by_host["api.example.com"]
+    assert b["finding_count"] == 1
+    assert b["categories"] == ["web"]
+    assert b["services"] == ["https://api.example.com/"]
+    assert b["creds"] == []
+
+
+def test_dedupe_findings_counts_duplicates(workspace):
+    workspace.create("op")
+    workspace.use("op")
+    # Record the same finding twice + a distinct one.
+    workspace.record_finding("host", "10.0.0.5", {"ports": [22, 80]}, source_tool="nmap")
+    workspace.record_finding("host", "10.0.0.5", {"ports": [22, 80]}, source_tool="nmap")
+    workspace.record_finding("smb", "10.0.0.5", {"evidence": "x"}, source_tool="netexec")
+
+    result = workspace.dedupe_findings()
+    assert result["total"] == 3
+    assert result["unique"] == 2
+    assert result["duplicates_removed"] == 1
+    assert len(result["findings"]) == 2
+    # The on-disk JSONL is untouched (append-only) — all 3 rows remain.
+    assert len(workspace.query_findings()) == 3
+
+
+def test_screenshots_dir_returns_existing_directory(workspace):
+    workspace.create("op")
+    workspace.use("op")
+    result = workspace.screenshots_dir()
+    p = Path(result["path"])
+    assert p.is_dir()
+    assert p.name == "screenshots"
+
+
 # ---------- credentials ----------
 
 def test_record_and_query_creds_roundtrip(workspace):

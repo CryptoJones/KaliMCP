@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — pentest gap coverage
+
+A capability sweep driven by `PentestingGaps.md` (a 10,000-ft "what we
+have vs. what pentesters need" review). 25 new MCP tools across the gaps
+that clustered at attack-path intelligence, traversal, and modern
+baselines. Every addition is a capability, not a gate — the
+no-authorization-gate design rule holds throughout (audit log + the
+non-blocking `out_of_scope` warning remain the only accountability).
+
+- **Recon baseline.** `nuclei_scan` (templated vuln scanning),
+  `subfinder_enum` (passive subdomain OSINT), `httpx_probe`,
+  `dnsx_resolve`, `wpscan_scan` (WordPress; API token redacted), and
+  `gowitness_capture` (headless-Chrome screenshots, dropped into the
+  engagement `screenshots/` dir — closing the long-reserved-but-empty
+  slot).
+- **Active Directory analysis.** `certipy_find` / `certipy_request`
+  (AD CS — ESC1-16), `bloodhound_collect` (collects the AD graph zip for
+  BloodHound ingest), and `capture_start`/`poll`/`stop`/`list` — Responder
+  / mitm6 / ntlmrelayx capture listeners (long-running; poll for captured
+  NetNTLM hashes).
+- **Traversal / pivoting.** `socks_start` (SSH dynamic SOCKS5 forward —
+  route other tools into an internal segment), `ssh_put` / `ssh_get` (scp
+  over the existing ControlMaster socket), and `enum_upload_run` (upload a
+  local-enum script like linpeas and run it on the target). A compromised
+  host is no longer a dead end.
+- **Exploitation / delivery (Tier 3).** `msf_run_module` runs a Metasploit
+  module against a target via `msfconsole -x` — the deliberate step beyond
+  `msfvenom_payload`'s generate-only posture. `password` is redacted from
+  the audit log.
+- **Cloud audit (Tier 3).** `cloud_scoutsuite`, `cloud_prowler`,
+  `cloud_kube_hunter`. Pacu is intentionally omitted (interactive REPL).
+- **Reverse engineering.** `gdb_inspect` (batch) and `r2_analyze` —
+  read-only loot triage of an on-disk binary (audited `passive_invoke`).
+- **Reporting + correlation.** `report_export` gains `client` (a
+  customer-facing deliverable: exec summary, severity rollup, per-finding
+  remediation + CVSS) and `html` formats — secrets still masked.
+  `host_correlate` (per-host findings+creds rollup) and `findings_dedupe`
+  add the analysis layer over the append-only findings store.
+- **Auto-record.** wpscan `vulnerabilities` mirror into the engagement as
+  `wordpress` findings. nuclei/httpx auto-record is deferred: their parsed
+  keys (`findings`, `results`) collide with nikto/ffuf, so they need a
+  unique key before they can safely join the global rule set.
+- **Dockerfile.** Adds the apt-available tools (subfinder, dnsx,
+  httpx-toolkit, wpscan, gdb, radare2, responder, mitm6, bloodhound.py,
+  proxychains4, chromium); builds nuclei + gowitness from source via the Go
+  toolchain; installs Certipy into the app venv (for the `certipy` binary);
+  and installs the Tier-3 cloud tools isolated via pipx. `metasploit-framework`
+  and `impacket-scripts` (ntlmrelayx) were already present.
+
+### Added — gap coverage round 2 (external-source cross-check)
+
+A web-research cross-check against the commonly-cited pentest toolset
+confirmed coverage was nearly complete; it surfaced three more worth adding
+(95 MCP tools total). Same rules: no auth gates, list argv, secrets redacted.
+
+- **kerbrute** — `kerbrute_userenum` (Kerberos pre-auth AD username
+  enumeration — no lockout, low noise) and `kerbrute_passwordspray` (spray one
+  password across a user list; password redacted in the audit log). Fills the
+  one clear AD gap the prior sweep missed. Built in the Go builder stage.
+- **`zap_baseline`** — OWASP ZAP headless baseline/quick web scan (the major
+  web tool with no prior counterpart; Burp is GUI/licensed and unwrappable).
+  Adds the `zaproxy` apt package (pulls a Java runtime — a heavy layer).
+- **`shodan_host` / `shodan_search`** — external OSINT via the Shodan API
+  (passive, like the CVE lookups; needs an API key that is kept out of all
+  logs). Pure stdlib, no Dockerfile change.
+- Auto-record: ZAP `alerts` → `web_alert` findings; kerbrute `valid_logins` →
+  creds. Both keys verified collision-free.
+
+### Added — docs
+
+- **`PentestingGaps.md` — capability gap analysis.** The 10,000-ft review
+  that drove the sweep above: coverage scorecard by engagement type, ranked
+  Tier 1-3 gaps, structural gaps, and a suggested roadmap.
+
 ### Added — docs
 
 - **`docs/THREAT_MODEL.md` — prompt-injection threat model (#24).** A

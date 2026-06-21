@@ -302,6 +302,158 @@ def list_hosts(*, name: str | None = None) -> list[str]:
     return sorted(hosts)
 
 
+# ---------- correlation / analysis ----------
+#
+# Read-only rollups over the append-only findings + creds logs. These never
+# rewrite anything on disk — the JSONL files are the forensic record and stay
+# append-only. Everything here is best-effort; loaders already swallow I/O
+# errors and return empty lists, so these helpers can't raise.
+
+
+def _payload_services(payload: dict[str, Any]) -> list[str]:
+    """Best-effort service/port strings from a finding payload.
+
+    Recognizes nmap-style ``ports`` (a list of ints/dicts) and httpx-style
+    ``url`` fields. Anything unrecognized yields nothing. Returns sorted
+    unique strings.
+    """
+    services: set[str] = set()
+    if not isinstance(payload, dict):
+        return []
+    ports = payload.get("ports")
+    if isinstance(ports, (list, tuple)):
+        for item in ports:
+            if isinstance(item, dict):
+                port = item.get("port")
+                svc = item.get("service") or item.get("name")
+                if port is not None and svc:
+                    services.add(f"{port}/{svc}")
+                elif port is not None:
+                    services.add(str(port))
+                elif svc:
+                    services.add(str(svc))
+            elif item not in (None, ""):
+                services.add(str(item))
+    url = payload.get("url")
+    if isinstance(url, str) and url:
+        services.add(url)
+    return sorted(services)
+
+
+def correlate_hosts(name: str | None = None) -> dict[str, Any]:
+    """Build a per-host rollup across findings + creds.
+
+    For each unique host seen in findings or creds, aggregates finding
+    counts, the categories observed, any services derived from finding
+    payloads (best-effort: nmap ``ports`` lists, httpx ``url`` fields),
+    the source tools involved, and the credentials captured — emitting
+    only ``{user, proto}`` per cred, never the secret.
+
+    Returns ``{"hosts": [...sorted by host...], "count": N}``.
+    """
+    findings = _read_jsonl(engagement_dir(name) / "findings.jsonl")
+    creds = _read_jsonl(engagement_dir(name) / "creds.jsonl")
+
+    hosts: dict[str, dict[str, Any]] = {}
+
+    def _bucket(host: str) -> dict[str, Any]:
+        return hosts.setdefault(host, {
+            "host": host,
+            "finding_count": 0,
+            "_categories": set(),
+            "_services": set(),
+            "creds": [],
+            "_source_tools": set(),
+        })
+
+    for row in findings:
+        host = row.get("host")
+        if not host:
+            continue
+        b = _bucket(str(host))
+        b["finding_count"] += 1
+        category = row.get("category")
+        if category:
+            b["_categories"].add(str(category))
+        source_tool = row.get("source_tool")
+        if source_tool:
+            b["_source_tools"].add(str(source_tool))
+        for svc in _payload_services(row.get("payload") or {}):
+            b["_services"].add(svc)
+
+    for row in creds:
+        host = row.get("host")
+        if not host:
+            continue
+        b = _bucket(str(host))
+        b["creds"].append({"user": row.get("user", ""), "proto": row.get("proto", "")})
+        source_tool = row.get("source_tool")
+        if source_tool:
+            b["_source_tools"].add(str(source_tool))
+
+    out: list[dict[str, Any]] = []
+    for host in sorted(hosts):
+        b = hosts[host]
+        out.append({
+            "host": b["host"],
+            "finding_count": b["finding_count"],
+            "categories": sorted(b["_categories"]),
+            "services": sorted(b["_services"]),
+            "creds": b["creds"],
+            "source_tools": sorted(b["_source_tools"]),
+        })
+    return {"hosts": out, "count": len(out)}
+
+
+def dedupe_findings(name: str | None = None) -> dict[str, Any]:
+    """Return a deduplicated *view* of findings (read/report only).
+
+    The dedupe key is ``(category, host, stable repr of payload)``. The
+    findings JSONL stays append-only on disk — this never rewrites the
+    file (append-only is the forensic contract); it just reports which
+    records collapse to the same key.
+
+    Returns ``{"unique": N, "total": M, "duplicates_removed": M-N,
+    "findings": [unique...]}``.
+    """
+    rows = _read_jsonl(engagement_dir(name) / "findings.jsonl")
+    seen: set[tuple[str, str, str]] = set()
+    unique: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            payload_repr = json.dumps(
+                row.get("payload") or {}, sort_keys=True, default=str,
+            )
+        except (TypeError, ValueError):
+            payload_repr = repr(row.get("payload"))
+        key = (str(row.get("category", "")), str(row.get("host", "")), payload_repr)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(row)
+    return {
+        "unique": len(unique),
+        "total": len(rows),
+        "duplicates_removed": len(rows) - len(unique),
+        "findings": unique,
+    }
+
+
+def screenshots_dir(name: str | None = None) -> dict[str, Any]:
+    """Return the absolute path to the engagement's ``screenshots/`` dir.
+
+    Creates the directory best-effort (parents, ``exist_ok``) so a wrapper
+    such as gowitness can drop images into the active engagement. Returns
+    ``{"path": "..."}``.
+    """
+    p = engagement_dir(name) / "screenshots"
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return {"path": str(p)}
+
+
 # ---------- credentials ----------
 
 def record_cred(

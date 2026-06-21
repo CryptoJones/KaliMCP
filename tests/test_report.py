@@ -95,6 +95,70 @@ def test_junit_report_marks_failures(workspace):
     assert len(failures) == 1
 
 
+def test_client_report_deliverable(workspace):
+    from kalimcp import report
+    workspace.create("op", scope=["10.0.0.0/24"], operator="alice")
+    workspace.use("op")
+    # A critical finding carrying explicit severity + CVSS.
+    workspace.record_finding(
+        "sqli", "10.0.0.5",
+        {"severity": "critical", "cvss": "9.8", "evidence": "id=1' -> error"},
+        source_tool="sqlmap",
+    )
+    # A second finding (no severity -> mapped from category, "host" -> Info).
+    workspace.record_finding("host", "10.0.0.6", {"ports": [22, 80]}, source_tool="nmap")
+    workspace.record_cred("10.0.0.5", "ssh", "alice", "hunter2", source_tool="hydra")
+
+    res = report.generate("client")
+    assert res["ok"] is True
+    assert res["format"] == "client"
+    content = res["content"]
+
+    # Title + deliverable shape.
+    assert "Security Assessment Report" in content
+    assert "Executive Summary" in content
+
+    # Exec-summary counts: 2 findings, 1 host-derived count >= 2, 1 credential.
+    assert res["findings"] == 2
+    assert res["creds"] == 1
+    assert "**2** finding(s)" in content
+    assert "**1** credential(s)" in content
+
+    # Severities are grouped: the sqli is Critical, the host finding is Info.
+    assert "### Critical (1)" in content
+    assert "### Info (1)" in content
+    # Critical section precedes Info section (severity ordering).
+    assert content.index("### Critical") < content.index("### Info")
+
+    # CVSS value appears.
+    assert "9.8" in content
+
+    # A remediation line is present.
+    assert "**Remediation**" in content
+
+    # Credential secret is masked — plaintext never appears.
+    assert "hunter2" not in content
+    assert "********" in content
+    assert "alice@10.0.0.5" in content
+
+
+def test_client_html_report(workspace):
+    from kalimcp import report
+    _seed(workspace)
+    res = report.generate("html")
+    assert res["ok"] is True
+    assert res["format"] == "html"
+    content = res["content"]
+    assert content.lstrip().startswith("<!DOCTYPE html>")
+    assert "Security Assessment Report" in content
+    assert "Executive Summary" in content
+    # Secret stays masked in HTML too.
+    assert "hunter2" not in content
+    assert "********" in content
+    # Self-contained: no external resources.
+    assert "http://" not in content and "https://" not in content
+
+
 def test_empty_engagement_reports_cleanly(workspace):
     from kalimcp import report
     workspace.create("empty")

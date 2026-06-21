@@ -59,6 +59,18 @@ _FINDING_RULES: dict[str, dict[str, Any]] = {
     # lmhash, nthash} (also recorded as creds below)
     "secrets": {"category": "secret_dump", "host_key": "principal",
                 "payload_keys": ["rid", "lmhash", "nthash"]},
+    # wpscan: parsed.vulnerabilities -> {title, fixed_in, references}.
+    # host_key None -> filed against the scan target (wpscan vulns aren't
+    # per-host). The key is unique across wrappers, so no cross-tool
+    # mis-record (cf. nuclei's `findings` which would collide with nikto's,
+    # and httpx's `results` which would collide with ffuf's — those tools
+    # would need a unique parsed key before they can safely auto-record).
+    "vulnerabilities": {"category": "wordpress", "host_key": None,
+                        "payload_keys": ["title", "fixed_in", "references"]},
+    # zap: parsed.alerts -> {name, risk, confidence, url}. Unique key, filed
+    # against the scan target (ZAP alerts aren't per-host).
+    "alerts": {"category": "web_alert", "host_key": None,
+               "payload_keys": ["name", "risk", "confidence", "url"]},
 }
 
 # parsed-key -> (proto, user_key, secret_key, host_key) for cred-shaped
@@ -74,6 +86,10 @@ _CRED_RULES: dict[str, dict[str, Any]] = {
     # john / hashcat: parsed.cracked -> {user, password} / {hash, password}
     "cracked": {"proto_key": None, "user_key": "user",
                 "secret_key": "password", "host_key": None},
+    # kerbrute passwordspray: parsed.valid_logins -> {user, password}. Unique
+    # key; proto left empty (no proto field on the item).
+    "valid_logins": {"proto_key": None, "user_key": "user",
+                     "secret_key": "password", "host_key": None},
 }
 
 

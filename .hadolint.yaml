@@ -9,3 +9,4 @@ failure-threshold: error
 ignored:
   - DL3008  # "pin apt package versions" — N/A for kali-rolling
   - DL3013  # "pin pip versions" — we install the local package + latest pip
+  - DL3062  # "pin go install versions" — nuclei/gowitness track upstream @latest

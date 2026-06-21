@@ -39,20 +39,31 @@ from mcp.server.fastmcp import FastMCP
 
 from . import audit, engagement, enrich, oast, process_registry, report, sessions
 from .tools import (
+    bloodhound,
+    capture,
+    certipy,
+    cloud,
+    discovery,
     ffuf,
     gobuster,
+    gowitness,
     hashcat,
     health,
     hydra,
     impacket,
     john,
+    kerbrute,
     ldap,
     medusa,
+    metasploit,
     msfvenom,
     netexec,
     nikto,
     nmap,
+    nuclei,
     passive,
+    reversing,
+    shodan_lookup,
     smb,
     snmp,
     sqlmap,
@@ -60,6 +71,8 @@ from .tools import (
     traceroute,
     whatweb,
     winrm,
+    wpscan,
+    zap,
 )
 
 mcp = FastMCP("kalimcp")
@@ -843,9 +856,12 @@ async def report_export(format: str = "markdown") -> dict:
     """Export the active engagement's findings store as a report.
 
     `format`: `markdown` (human report), `sarif` (SARIF v2.1.0 for GitHub
-    Code Scanning), or `junit` (JUnit XML — error-severity findings become
-    `<failure>` so CI goes red). Credential secrets are masked. Returns
-    `content`; pass it to `loot_write` to save it.
+    Code Scanning), `junit` (JUnit XML — error-severity findings become
+    `<failure>` so CI goes red), `client` (customer-facing deliverable with
+    exec summary, severity rollup, per-finding remediation and CVSS), or
+    `html` (the `client` report wrapped in a self-contained HTML doc).
+    Credential secrets are masked. Returns `content`; pass it to `loot_write`
+    to save it.
     """
     return report.generate(format)
 
@@ -1013,6 +1029,446 @@ async def oast_poll() -> dict:
 async def oast_stop() -> dict:
     """Stop the OOB catcher and discard in-process interactions."""
     return await oast.oast_stop()
+
+
+# ======================================================================
+# Pentest gap-coverage tools (recon baseline, AD analysis, traversal,
+# capture, cloud, exploitation, reverse-engineering, correlation).
+# Same rules apply throughout: no authorization gates — audit log +
+# non-blocking scope warning are the only accountability.
+# ======================================================================
+
+# ---------- recon baseline ----------
+
+@mcp.tool()
+async def nuclei_scan(
+    target: str,
+    severity: str = "",
+    tags: str = "",
+    templates: str = "",
+    rate_limit: int = 150,
+    timeout_seconds: int = 600,
+) -> dict:
+    """Scan a target URL with nuclei's templated vulnerability checks.
+
+    `severity` filters (e.g. `critical,high`); `tags` selects template tags;
+    `templates` is a custom template path/dir. Returns parsed findings."""
+    return await nuclei.scan(
+        target=target,
+        severity=severity,
+        tags=tags,
+        templates=templates,
+        rate_limit=rate_limit,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def subfinder_enum(domain: str, timeout_seconds: int = 300) -> dict:
+    """Passive subdomain OSINT enumeration for a domain (subfinder, no probe)."""
+    return await discovery.subfinder_enum(domain=domain, timeout_seconds=timeout_seconds)
+
+
+@mcp.tool()
+async def httpx_probe(target: str, timeout_seconds: int = 120) -> dict:
+    """Active web probe (httpx): status, title, tech-detect, web-server banner."""
+    return await discovery.probe(target=target, timeout_seconds=timeout_seconds)
+
+
+@mcp.tool()
+async def dnsx_resolve(
+    target: str, record_types: str = "a", timeout_seconds: int = 120
+) -> dict:
+    """Active DNS resolution against a target (dnsx); records returned as JSON."""
+    return await discovery.resolve(
+        target=target, record_types=record_types, timeout_seconds=timeout_seconds
+    )
+
+
+@mcp.tool()
+async def wpscan_scan(
+    target: str,
+    enumerate: str = "vp,u",
+    api_token: str = "",
+    timeout_seconds: int = 600,
+) -> dict:
+    """Scan a WordPress site with wpscan (version, vulnerable plugins/themes, users).
+
+    `api_token` (redacted in the audit log) unlocks the WPVulnDB vuln data."""
+    return await wpscan.scan(
+        target=target,
+        enumerate=enumerate,
+        api_token=api_token,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def gowitness_capture(
+    target: str, output_dir: str = "", timeout_seconds: int = 120
+) -> dict:
+    """Screenshot a web URL with gowitness (headless Chrome).
+
+    Defaults `output_dir` to the active engagement's `screenshots/` dir so
+    captures land in the workspace; pass an explicit dir to override."""
+    if not output_dir:
+        output_dir = engagement.screenshots_dir().get("path", "")
+    return await gowitness.capture(
+        target=target, output_dir=output_dir, timeout_seconds=timeout_seconds
+    )
+
+
+# ---------- Active Directory analysis (AD CS + BloodHound) ----------
+
+@mcp.tool()
+async def certipy_find(
+    target: str,
+    username: str,
+    password: str = "",
+    nthash: str = "",
+    dc_ip: str = "",
+    timeout_seconds: int = 300,
+) -> dict:
+    """Enumerate AD CS templates/CAs and flag ESC1-16 vulnerabilities (certipy).
+
+    `target` is the AD domain. Authenticate with `password` XOR `nthash`
+    (both redacted in the audit log)."""
+    return await certipy.find(
+        target=target,
+        username=username,
+        password=password,
+        nthash=nthash,
+        dc_ip=dc_ip,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def certipy_request(
+    target: str,
+    username: str,
+    password: str = "",
+    nthash: str = "",
+    ca: str = "",
+    template: str = "",
+    upn: str = "",
+    dc_ip: str = "",
+    timeout_seconds: int = 300,
+) -> dict:
+    """Request a certificate from a CA — ESC1-style abuse (certipy req).
+
+    Pass an alternate `upn` to impersonate via the issued cert. Returns the
+    saved `.pfx` path."""
+    return await certipy.request(
+        target=target,
+        username=username,
+        password=password,
+        nthash=nthash,
+        ca=ca,
+        template=template,
+        upn=upn,
+        dc_ip=dc_ip,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def bloodhound_collect(
+    target: str,
+    username: str,
+    password: str = "",
+    nthash: str = "",
+    dc_ip: str = "",
+    nameserver: str = "",
+    collection: str = "Default",
+    output_dir: str = "",
+    timeout_seconds: int = 600,
+) -> dict:
+    """Collect BloodHound AD graph data with bloodhound-python (the COLLECTOR).
+
+    Binds a DC with domain creds (`password` XOR `nthash`, redacted) and writes
+    a `.zip` of the AD graph for ingest into a neo4j-backed BloodHound. This
+    collects only; path analysis happens in the BloodHound GUI."""
+    return await bloodhound.collect(
+        target=target,
+        username=username,
+        password=password,
+        nthash=nthash,
+        dc_ip=dc_ip,
+        nameserver=nameserver,
+        collection=collection,
+        output_dir=output_dir,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+# ---------- traversal / pivoting (SOCKS + file transfer over SSH) ----------
+
+@mcp.tool()
+async def socks_start(
+    host: str,
+    user: str,
+    password: str = "",
+    key: str = "",
+    port: int = 22,
+    socks_port: int = 1080,
+    timeout_seconds: int = 30,
+) -> dict:
+    """Open an SSH pivot with a dynamic SOCKS5 forward.
+
+    Point other tools at the returned `socks5://127.0.0.1:<socks_port>` via
+    proxychains or a tool-native `--proxy` flag. Password redacted in audit."""
+    return await sessions.socks_start(
+        host=host, user=user, password=password, key=key,
+        port=port, socks_port=socks_port, timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def ssh_put(
+    session_id: str, local_path: str, remote_path: str, timeout_seconds: int = 120
+) -> dict:
+    """Upload a local file to the target over an open SSH/SOCKS session (scp)."""
+    return await sessions.ssh_put(
+        session_id, local_path, remote_path, timeout_seconds=timeout_seconds
+    )
+
+
+@mcp.tool()
+async def ssh_get(
+    session_id: str, remote_path: str, local_path: str, timeout_seconds: int = 120
+) -> dict:
+    """Download a file from the target over an open SSH/SOCKS session (scp)."""
+    return await sessions.ssh_get(
+        session_id, remote_path, local_path, timeout_seconds=timeout_seconds
+    )
+
+
+@mcp.tool()
+async def enum_upload_run(
+    session_id: str,
+    local_script: str,
+    remote_path: str = "/tmp/.km_enum",
+    interpreter: str = "sh",
+    timeout_seconds: int = 300,
+) -> dict:
+    """Upload a local-enum script (e.g. linpeas) and run it on the target."""
+    return await sessions.enum_upload_run(
+        session_id, local_script, remote_path, interpreter,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+# ---------- credential-capture listeners (long-running; poll for hashes) ----------
+
+@mcp.tool()
+async def capture_start(
+    tool: str = "responder",
+    interface: str = "eth0",
+    target: str = "",
+    domain: str = "",
+    relay_target: str = "",
+    extra: str = "",
+    wait_seconds: int = 3,
+) -> dict:
+    """Start a credential-capture listener (responder / mitm6 / ntlmrelayx).
+
+    Long-running: returns a `capture_id`; poll it with `capture_poll` for
+    captured NetNTLM hashes."""
+    return await capture.capture_start(
+        tool=tool, interface=interface, target=target, domain=domain,
+        relay_target=relay_target, extra=extra, wait_seconds=wait_seconds,
+    )
+
+
+@mcp.tool()
+async def capture_poll(capture_id: str) -> dict:
+    """Drain new listener output; return captured NetNTLM hashes + alive status."""
+    return capture.capture_poll(capture_id)
+
+
+@mcp.tool()
+async def capture_stop(capture_id: str) -> dict:
+    """Terminate a capture listener and unregister it."""
+    return capture.capture_stop(capture_id)
+
+
+@mcp.tool()
+async def capture_list() -> dict:
+    """List active capture listeners (id, tool, alive)."""
+    return capture.capture_list()
+
+
+# ---------- cloud-security audit (Tier 3) ----------
+
+@mcp.tool()
+async def cloud_scoutsuite(
+    provider: str = "aws",
+    report_dir: str = "",
+    extra_args: str = "",
+    timeout_seconds: int = 900,
+) -> dict:
+    """ScoutSuite multi-cloud audit (aws/azure/gcp/aliyun/oci) via local creds.
+
+    No target host; passive-style audit. `extra_args` is shlex-split."""
+    return await cloud.scoutsuite(
+        provider=provider, report_dir=report_dir,
+        extra_args=extra_args, timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def cloud_prowler(
+    provider: str = "aws",
+    output_dir: str = "",
+    extra_args: str = "",
+    timeout_seconds: int = 1800,
+) -> dict:
+    """Prowler cloud-security audit (OCSF JSON) via local cloud credentials.
+
+    No target host; passive-style audit. `extra_args` is shlex-split."""
+    return await cloud.prowler(
+        provider=provider, output_dir=output_dir,
+        extra_args=extra_args, timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def cloud_kube_hunter(
+    target: str = "", remote: bool = True, timeout_seconds: int = 600
+) -> dict:
+    """kube-hunter Kubernetes weakness scan. With a target + remote=True probes
+    `--remote <target>`; otherwise `--pod` in-cluster."""
+    return await cloud.kube_hunter(
+        target=target, remote=remote, timeout_seconds=timeout_seconds
+    )
+
+
+# ---------- exploitation / delivery (Tier 3) ----------
+
+@mcp.tool()
+async def msf_run_module(
+    target: str,
+    module: str,
+    options: str = "",
+    payload: str = "",
+    lhost: str = "",
+    lport: int = 0,
+    password: str = "",
+    timeout_seconds: int = 600,
+) -> dict:
+    """Execute a Metasploit module against a target (TIER 3: delivery/execution).
+
+    Unlike `msfvenom_payload` (which only generates bytes), this DELIVERS and
+    RUNS a module at `target` (set as RHOSTS) via `msfconsole -x` — it can open
+    a session on the host. `module` is a full module path; `options` is
+    `KEY=VAL;KEY=VAL`. `password` is redacted from the audit log."""
+    return await metasploit.run_module(
+        target=target, module=module, options=options, payload=payload,
+        lhost=lhost, lport=lport, password=password,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+# ---------- reverse engineering / loot triage (read a file on disk) ----------
+
+@mcp.tool()
+async def gdb_inspect(
+    path: str, command: str = "info functions", timeout_seconds: int = 60
+) -> dict:
+    """Inspect a binary already on disk with gdb in batch mode (loot triage).
+
+    Runs gdb non-interactively (`-batch -nx`) with one `-ex` command. Reads a
+    local file only; never attaches to a live process or the network."""
+    return await reversing.gdb_inspect(
+        path=path, command=command, timeout_seconds=timeout_seconds
+    )
+
+
+@mcp.tool()
+async def r2_analyze(
+    path: str, commands: str = "aaa;afl", timeout_seconds: int = 120
+) -> dict:
+    """Analyze a binary already on disk with radare2 (loot triage).
+
+    Runs r2 quiet/color-stripped with one `-c` command string. Default
+    `aaa;afl` runs full analysis then lists functions."""
+    return await reversing.r2_analyze(
+        path=path, commands=commands, timeout_seconds=timeout_seconds
+    )
+
+
+# ---------- engagement correlation / analysis ----------
+
+@mcp.tool()
+async def host_correlate() -> dict:
+    """Per-host rollup of findings + creds for the active engagement."""
+    return engagement.correlate_hosts()
+
+
+@mcp.tool()
+async def findings_dedupe() -> dict:
+    """Deduplicated view of the active engagement's findings (read-only report)."""
+    return engagement.dedupe_findings()
+
+
+# ---------- gap-coverage round 2 (kerbrute / ZAP / Shodan) ----------
+
+@mcp.tool()
+async def kerbrute_userenum(
+    target: str, dc_ip: str, user_list: str, timeout_seconds: int = 300
+) -> dict:
+    """Enumerate valid AD usernames via Kerberos pre-auth (no lockout, low noise).
+
+    `target` = AD domain (e.g. corp.local); `dc_ip` = the KDC; `user_list` = a
+    newline-delimited username file. Returns parsed.valid_users."""
+    return await kerbrute.userenum(
+        target=target, dc_ip=dc_ip, user_list=user_list, timeout_seconds=timeout_seconds
+    )
+
+
+@mcp.tool()
+async def kerbrute_passwordspray(
+    target: str, dc_ip: str, user_list: str, password: str, timeout_seconds: int = 300
+) -> dict:
+    """Spray a single password across an AD username list via Kerberos.
+
+    `password` (redacted in the audit log) is tried for every user in
+    `user_list`. Returns parsed.valid_logins ([{user, password}])."""
+    return await kerbrute.passwordspray(
+        target=target, dc_ip=dc_ip, user_list=user_list,
+        password=password, timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def zap_baseline(target: str, report_path: str = "", timeout_seconds: int = 900) -> dict:
+    """Run an OWASP ZAP headless baseline/quick scan against a web target.
+
+    Spiders `target`, runs ZAP's passive + light active scan, writes a JSON
+    report (default /tmp/kalimcp_zap_report.json), and returns parsed alerts
+    [{name, risk, confidence, url}]. Active scan — audit-logged."""
+    return await zap.baseline_scan(
+        target=target, report_path=report_path, timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool()
+async def shodan_host(ip: str, api_key: str, timeout_seconds: int = 15) -> dict:
+    """Look up a host on Shodan by IP — ports, hostnames, org, OS, known vulns.
+
+    External intel: reaches the Shodan API (needs a Shodan `api_key`, kept out
+    of the logs), does NOT probe the target itself."""
+    return await shodan_lookup.host_lookup(ip, api_key=api_key, timeout_seconds=timeout_seconds)
+
+
+@mcp.tool()
+async def shodan_search(query: str, api_key: str, limit: int = 20, timeout_seconds: int = 15) -> dict:
+    """Search Shodan's index (e.g. `apache port:443`) — matching hosts.
+
+    External intel: reaches the Shodan API (needs a Shodan `api_key`), does NOT
+    probe any target."""
+    return await shodan_lookup.search(query, api_key=api_key, limit=limit, timeout_seconds=timeout_seconds)
 
 
 def main() -> int:

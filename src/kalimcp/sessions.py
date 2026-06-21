@@ -111,10 +111,70 @@ async def ssh_start(
     return {"ok": True, "session_id": sid, "kind": "ssh", "host": host, "user": user}
 
 
+async def socks_start(
+    *,
+    host: str,
+    user: str,
+    password: str = "",
+    key: str = "",
+    port: int = 22,
+    socks_port: int = 1080,
+    timeout_seconds: int = 30,
+) -> dict[str, Any]:
+    """Open an SSH master with a dynamic SOCKS forward (a pivot).
+
+    Mirrors :func:`ssh_start` but adds ``-D <socks_port>`` — a dynamic,
+    application-level port forward — so other tools can reach the target's
+    internal network through ``socks5://127.0.0.1:<socks_port>`` (point them
+    there via proxychains or a tool-native ``--proxy`` flag). The session is
+    a normal SSH ControlMaster (kind "socks") and is torn down by ``ssh_stop``.
+    """
+    if host.startswith("-") or user.startswith("-"):
+        return run.error_result("host/user may not begin with '-'")
+    if key and (err := run.validate_file(key, "key")):
+        return err
+
+    sid = _new_id("socks")
+    ctl = _ctl_path(sid)
+    sp = int(socks_port)
+    argv: list[str] = []
+    if password:
+        argv += ["sshpass", "-p", password]
+    argv += [
+        "ssh", "-M", "-S", ctl,
+        "-D", str(sp),
+        "-o", "ControlPersist=600",
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", "ConnectTimeout=10",
+        "-p", str(int(port)),
+    ]
+    if key:
+        argv += ["-i", key, "-o", "BatchMode=yes"]
+    argv += ["-fN", f"{user}@{host}"]
+
+    result = await run.run(argv, timeout=timeout_seconds)
+    logged = audit.redact_argv(argv, {"-p"}, [password] if password else None)
+    _audit("socks_start", session_id=sid, host=host, user=user, port=int(port),
+           socks_port=sp, argv=logged, exit_code=result.get("exit_code"))
+    if result.get("exit_code") != 0:
+        return {"ok": False, "error": "socks_start_failed",
+                "stderr": result.get("stderr", ""), "session_id": sid}
+    _sessions[sid] = {
+        "id": sid, "kind": "socks", "host": host, "user": user, "port": int(port),
+        "ctl": ctl, "socks_port": sp, "started_at": _now(),
+    }
+    return {
+        "ok": True, "session_id": sid, "kind": "socks",
+        "proxy": f"socks5://127.0.0.1:{sp}",
+        "note": "point other tools here via proxychains or a tool-native "
+                "--proxy flag",
+    }
+
+
 async def ssh_exec(session_id: str, command: str, *, timeout_seconds: int = 60) -> dict[str, Any]:
     """Run ``command`` on an open SSH session (reuses the master socket)."""
     sess = _sessions.get(session_id)
-    if not sess or sess.get("kind") != "ssh":
+    if not sess or sess.get("kind") not in ("ssh", "socks"):
         return run.error_result(f"no such ssh session: {session_id}")
     argv = [
         "ssh", "-S", sess["ctl"], "-p", str(sess["port"]),
@@ -126,10 +186,81 @@ async def ssh_exec(session_id: str, command: str, *, timeout_seconds: int = 60) 
     return {"ok": True, "session_id": session_id, **result}
 
 
+async def ssh_put(
+    session_id: str, local_path: str, remote_path: str, *, timeout_seconds: int = 120
+) -> dict[str, Any]:
+    """Upload ``local_path`` to ``remote_path`` over an open SSH master (scp)."""
+    sess = _sessions.get(session_id)
+    if not sess or sess.get("kind") not in ("ssh", "socks"):
+        return run.error_result(f"no such ssh session: {session_id}")
+    if err := run.validate_file(local_path, "local_path"):
+        return err
+    ctl = sess["ctl"]
+    argv = [
+        "scp", "-o", f"ControlPath={ctl}", "-P", str(sess["port"]),
+        "--", local_path, f"{sess['user']}@{sess['host']}:{remote_path}",
+    ]
+    result = await run.run(argv, timeout=timeout_seconds)
+    _audit("ssh_put", session_id=session_id, argv=argv,
+           remote_path=remote_path, exit_code=result.get("exit_code"))
+    return {"ok": result.get("exit_code") == 0, "session_id": session_id,
+            "remote_path": remote_path, **result}
+
+
+async def ssh_get(
+    session_id: str, remote_path: str, local_path: str, *, timeout_seconds: int = 120
+) -> dict[str, Any]:
+    """Download ``remote_path`` to ``local_path`` over an open SSH master (scp)."""
+    sess = _sessions.get(session_id)
+    if not sess or sess.get("kind") not in ("ssh", "socks"):
+        return run.error_result(f"no such ssh session: {session_id}")
+    ctl = sess["ctl"]
+    argv = [
+        "scp", "-o", f"ControlPath={ctl}", "-P", str(sess["port"]),
+        "--", f"{sess['user']}@{sess['host']}:{remote_path}", local_path,
+    ]
+    result = await run.run(argv, timeout=timeout_seconds)
+    _audit("ssh_get", session_id=session_id, argv=argv,
+           remote_path=remote_path, local_path=local_path,
+           exit_code=result.get("exit_code"))
+    return {"ok": result.get("exit_code") == 0, "session_id": session_id,
+            "local_path": local_path, **result}
+
+
+async def enum_upload_run(
+    session_id: str,
+    local_script: str,
+    remote_path: str = "/tmp/.km_enum",
+    interpreter: str = "sh",
+    *,
+    timeout_seconds: int = 300,
+) -> dict[str, Any]:
+    """Upload a local-enum script (PEASS-style) and run it on the target.
+
+    Convenience combo: ``ssh_put`` the script, then ``ssh_exec`` a single
+    remote command (``chmod +x <remote_path> && <interpreter> <remote_path>``)
+    that executes on the TARGET via the SSH master — this is the intended
+    remote capability, not a local shell.
+    """
+    if err := run.validate_file(local_script, "local_script"):
+        return err
+    put = await ssh_put(session_id, local_script, remote_path,
+                        timeout_seconds=min(timeout_seconds, 120))
+    if not put.get("ok"):
+        return {"ok": False, "error": "upload_failed", "session_id": session_id,
+                "put": put}
+    remote_cmd = f"chmod +x {remote_path} && {interpreter} {remote_path}"
+    run_res = await ssh_exec(session_id, remote_cmd, timeout_seconds=timeout_seconds)
+    _audit("enum_upload_run", session_id=session_id, remote_path=remote_path,
+           interpreter=interpreter)
+    return {"ok": run_res.get("ok", False), "session_id": session_id,
+            "remote_path": remote_path, "put": put, "run": run_res}
+
+
 async def ssh_stop(session_id: str, *, timeout_seconds: int = 15) -> dict[str, Any]:
-    """Close an SSH session (tears down the master socket)."""
+    """Close an SSH or SOCKS session (tears down the master socket)."""
     sess = _sessions.pop(session_id, None)
-    if not sess or sess.get("kind") != "ssh":
+    if not sess or sess.get("kind") not in ("ssh", "socks"):
         return {"ok": False, "error": "no_such_session", "session_id": session_id}
     argv = ["ssh", "-S", sess["ctl"], "-O", "exit",
             f"{sess['user']}@{sess['host']}"]
@@ -308,8 +439,10 @@ def session_list() -> dict[str, Any]:
     items = []
     for sid, sess in sorted(_sessions.items()):
         entry = {k: sess[k] for k in ("id", "kind", "started_at") if k in sess}
-        if sess.get("kind") == "ssh":
+        if sess.get("kind") in ("ssh", "socks"):
             entry["endpoint"] = f"{sess['user']}@{sess['host']}:{sess['port']}"
+            if sess.get("kind") == "socks":
+                entry["proxy"] = f"socks5://127.0.0.1:{sess['socks_port']}"
         else:
             entry["port"] = sess.get("port")
             proc = _procs.get(sid)
