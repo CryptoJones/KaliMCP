@@ -52,6 +52,14 @@ FROM kalilinux/kali-rolling@sha256:6ae2813f51a2adf265e0a740c5fe3645406a8fc39711a
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Image variants. The two heaviest groups are optional — build a leaner image
+# with `--build-arg INCLUDE_CLOUD=false` (drops ScoutSuite/Prowler/kube-hunter)
+# and/or `--build-arg INCLUDE_ZAP=false` (drops OWASP ZAP + its JRE). Both
+# default to the full toolset; the corresponding MCP tools just report
+# ToolNotInstalled if their binary was excluded.
+ARG INCLUDE_CLOUD=true
+ARG INCLUDE_ZAP=true
+
 # Tool installs. Each line is the smallest grouping that maps to one
 # of the wrapped tools, so it's easy to see which Dockerfile change
 # enabled which MCP tool.
@@ -100,7 +108,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         bloodhound.py \
         proxychains4 \
         chromium \
-        zaproxy \
         pipx \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*
@@ -109,21 +116,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # stage onto PATH. The Go toolchain itself never enters this image.
 COPY --from=gobuilder /root/go/bin/nuclei /root/go/bin/gowitness /root/go/bin/kerbrute /usr/local/bin/
 
+# OWASP ZAP (zaproxy) pulls a full JRE — the single heaviest apt package here.
+# Gated behind INCLUDE_ZAP so a lean build can skip it.
+RUN if [ "$INCLUDE_ZAP" != "false" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends zaproxy \
+        && apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 # Tier-3 cloud-audit tools (ScoutSuite -> `scout`, Prowler, kube-hunter) are
 # large and not in Kali apt. Install them isolated via pipx into a shared
 # location so the unprivileged runtime user can run them. (This is the
 # heaviest part of the image; drop this block if you don't need cloud audit.)
 ENV PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/opt/pipx/bin
-# kube-hunter has a native dependency with no prebuilt arm64 wheel, so it
-# builds from sdist and needs a C toolchain + Python headers at install time.
-# Install them just for this layer and purge them in the same RUN so the
-# runtime image stays slim (the built wheels don't need a compiler).
-RUN apt-get update && apt-get install -y --no-install-recommends gcc python3-dev \
-    && pipx install scoutsuite \
-    && pipx install prowler \
-    && pipx install kube-hunter \
-    && apt-get purge -y gcc python3-dev && apt-get autoremove -y \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Tier-3 cloud tools, gated behind INCLUDE_CLOUD. kube-hunter has a native
+# dependency with no prebuilt arm64 wheel, so it builds from sdist and needs a
+# C toolchain + Python headers at install time — installed just for this layer
+# and purged in the same RUN so the runtime image stays slim (the built wheels
+# don't need a compiler).
+RUN if [ "$INCLUDE_CLOUD" != "false" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends gcc python3-dev \
+        && pipx install scoutsuite \
+        && pipx install prowler \
+        && pipx install kube-hunter \
+        && apt-get purge -y gcc python3-dev && apt-get autoremove -y \
+        && apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Grant nmap only the capabilities it needs (raw sockets for SYN/OS scans,
 # low-port bind) instead of running the whole container as root. Two

@@ -213,8 +213,16 @@ tearing down the session.
 ```bash
 git clone https://github.com/CryptoJones/KaliMCP.git
 cd KaliMCP
-docker build -t kalimcp .
+docker build -t kalimcp .                # full image (all tools)
+# or a leaner image, dropping the two heaviest optional groups:
+docker build --build-arg INCLUDE_CLOUD=false --build-arg INCLUDE_ZAP=false -t kalimcp:lean .
 ```
+
+`INCLUDE_CLOUD=false` drops the ScoutSuite/Prowler/kube-hunter pipx layer;
+`INCLUDE_ZAP=false` drops OWASP ZAP and its JRE. Both default to **true**
+(the full toolset); the excluded MCP tools just report `ToolNotInstalled`.
+The Go-built tools (nuclei, gowitness, kerbrute) come from a builder stage,
+so the Go toolchain never ships in the runtime image.
 
 The image pulls from `kalilinux/kali-rolling` and installs the full
 wrapped tool set alongside the Python package:

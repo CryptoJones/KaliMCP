@@ -61,16 +61,30 @@ _FINDING_RULES: dict[str, dict[str, Any]] = {
                 "payload_keys": ["rid", "lmhash", "nthash"]},
     # wpscan: parsed.vulnerabilities -> {title, fixed_in, references}.
     # host_key None -> filed against the scan target (wpscan vulns aren't
-    # per-host). The key is unique across wrappers, so no cross-tool
-    # mis-record (cf. nuclei's `findings` which would collide with nikto's,
-    # and httpx's `results` which would collide with ffuf's — those tools
-    # would need a unique parsed key before they can safely auto-record).
+    # per-host). Key is unique across wrappers.
     "vulnerabilities": {"category": "wordpress", "host_key": None,
                         "payload_keys": ["title", "fixed_in", "references"]},
     # zap: parsed.alerts -> {name, risk, confidence, url}. Unique key, filed
     # against the scan target (ZAP alerts aren't per-host).
     "alerts": {"category": "web_alert", "host_key": None,
                "payload_keys": ["name", "risk", "confidence", "url"]},
+}
+
+# Per-tool finding rules — applied ONLY for the matching tool_name. This lets a
+# wrapper auto-record under a parsed key that collides across tools without
+# cross-recording: nuclei's `findings` would otherwise also catch nikto's, and
+# httpx's `results` would catch ffuf's. Scoping by tool_name keeps each honest
+# (nikto/ffuf simply aren't in this map, so their colliding keys never record).
+_TOOL_FINDING_RULES: dict[str, dict[str, dict[str, Any]]] = {
+    "nuclei": {
+        "findings": {"category": "nuclei", "host_key": "host",
+                     "payload_keys": ["template_id", "name", "severity",
+                                      "matched_at", "type"]},
+    },
+    "httpx": {
+        "results": {"category": "web_service", "host_key": "url",
+                    "payload_keys": ["status_code", "title", "webserver", "tech"]},
+    },
 }
 
 # parsed-key -> (proto, user_key, secret_key, host_key) for cred-shaped
@@ -93,13 +107,18 @@ _CRED_RULES: dict[str, dict[str, Any]] = {
 }
 
 
-def _autorecord(tool_name: str, target: str, parsed: dict[str, Any]) -> None:
-    """Mirror tool findings into the active engagement workspace.
+def _apply_finding_rules(
+    rules: dict[str, dict[str, Any]],
+    tool_name: str,
+    target: str,
+    parsed: dict[str, Any],
+) -> None:
+    """Record an engagement finding for each (parsed-key -> rule) in ``rules``.
 
-    Best-effort: any I/O failure is silently swallowed. The audit
-    log remains ground truth.
+    Shared by the global ``_FINDING_RULES`` and the tool-scoped
+    ``_TOOL_FINDING_RULES`` so a colliding parsed key can record per-tool.
     """
-    for key, rule in _FINDING_RULES.items():
+    for key, rule in rules.items():
         items = parsed.get(key) or []
         if not isinstance(items, list):
             continue
@@ -115,6 +134,16 @@ def _autorecord(tool_name: str, target: str, parsed: dict[str, Any]) -> None:
                 )
             except Exception:
                 pass
+
+
+def _autorecord(tool_name: str, target: str, parsed: dict[str, Any]) -> None:
+    """Mirror tool findings into the active engagement workspace.
+
+    Best-effort: any I/O failure is silently swallowed. The audit
+    log remains ground truth.
+    """
+    _apply_finding_rules(_FINDING_RULES, tool_name, target, parsed)
+    _apply_finding_rules(_TOOL_FINDING_RULES.get(tool_name, {}), tool_name, target, parsed)
 
     for key, rule in _CRED_RULES.items():
         items = parsed.get(key) or []

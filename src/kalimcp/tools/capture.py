@@ -135,7 +135,10 @@ def _build_argv(
 ) -> tuple[list[str] | None, dict[str, Any] | None]:
     """Return (argv, None) or (None, error_result)."""
     if tool == "responder":
-        argv = ["responder", "-I", interface, "-wd"]
+        # WPAD rogue-proxy on (-w). DHCP poisoning (-d) is left OFF by default
+        # — it's disruptive to the whole segment; add `extra="-d"` when the
+        # engagement explicitly calls for it.
+        argv = ["responder", "-I", interface, "-w"]
     elif tool == "mitm6":
         argv = ["mitm6"] + (["-d", domain] if domain else []) + ["-i", interface]
     elif tool == "ntlmrelayx":

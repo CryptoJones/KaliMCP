@@ -387,6 +387,51 @@ async def test_autorecord_writes_findings_when_enabled(engagement_workspace, mon
 
 
 @pytest.mark.asyncio
+async def test_autorecord_tool_scoped_nuclei_records(engagement_workspace, monkeypatch):
+    """nuclei's parsed `findings` records via the tool-scoped rule."""
+    monkeypatch.setenv("KALIMCP_AUTORECORD", "1")
+    engagement_workspace.create("op_nuclei", scope=[])
+    engagement_workspace.use("op_nuclei")
+
+    @active_tool("nuclei")
+    async def stub(target: str, **kwargs):
+        return {
+            "exit_code": 0,
+            "argv": ["nuclei", target],
+            "parsed": {"findings": [
+                {"template_id": "cve-2021-x", "name": "X", "severity": "high",
+                 "host": target, "matched_at": target, "type": "http"},
+            ]},
+        }
+
+    await stub(target="http://10.0.0.9")
+    findings = engagement_workspace.query_findings(category="nuclei")
+    assert len(findings) == 1
+    assert findings[0]["source_tool"] == "nuclei"
+
+
+@pytest.mark.asyncio
+async def test_autorecord_tool_scoped_no_cross_record(engagement_workspace, monkeypatch):
+    """A different tool emitting the same `findings` key (nikto) must NOT
+    record under nuclei's tool-scoped rule — that's the whole point of
+    scoping by tool_name."""
+    monkeypatch.setenv("KALIMCP_AUTORECORD", "1")
+    engagement_workspace.create("op_nikto", scope=[])
+    engagement_workspace.use("op_nikto")
+
+    @active_tool("nikto")
+    async def stub(target: str, **kwargs):
+        return {
+            "exit_code": 0,
+            "argv": ["nikto", target],
+            "parsed": {"findings": [{"id": "1", "desc": "server header"}]},
+        }
+
+    await stub(target="http://10.0.0.9")
+    assert engagement_workspace.query_findings(category="nuclei") == []
+
+
+@pytest.mark.asyncio
 async def test_autorecord_writes_creds_when_enabled(engagement_workspace, monkeypatch):
     monkeypatch.setenv("KALIMCP_AUTORECORD", "1")
     engagement_workspace.create("op_creds", scope=[])

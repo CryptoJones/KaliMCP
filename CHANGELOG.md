@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — correctness (adversarial CLI review of the new wrappers)
+
+Self-review of the gap-coverage wrappers against the real tool CLIs found
+three silent-failure bugs the (self-consistent) argv unit tests couldn't:
+
+- **radare2** (`r2_analyze`): `r2 ... -- <path>` analyzed an empty buffer —
+  in radare2 `--` means "open no file". Pass the path as the final positional.
+- **dnsx** (`dnsx_resolve`): `-d <host>` is the bruteforce base flag and
+  resolves nothing alone; feed the host on stdin instead.
+- **cloud** (`scoutsuite`/`prowler`): `parsed` echoed inputs as if they were
+  findings — now honest (points at the report dir) and Prowler always gets a
+  findable output dir.
+
+Plus: `certipy req` gains optional `ca_host` → `-target` (CA enrollment
+server); bloodhound `-dc` docstring clarified (DC hostname, not IP).
+
+### Changed — auto-record, defaults, image variants
+
+- **Tool-scoped auto-record.** nuclei (`findings`) and httpx (`results`) now
+  mirror into the engagement under per-tool rules, so their parsed keys can
+  record without cross-recording nikto/ffuf (which share those key names).
+- **Responder default.** Capture starts Responder with WPAD only (`-w`);
+  DHCP poisoning (`-d`, disruptive to the segment) is opt-in via `extra`.
+- **Image variants.** `--build-arg INCLUDE_CLOUD=false` and/or
+  `INCLUDE_ZAP=false` produce a leaner image (drop the cloud pipx tools / the
+  ZAP JRE). Both default to the full toolset; excluded tools report
+  ToolNotInstalled cleanly.
+
 ### Added — pentest gap coverage
 
 A capability sweep driven by `PentestingGaps.md` (a 10,000-ft "what we

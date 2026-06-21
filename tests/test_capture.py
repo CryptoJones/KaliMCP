@@ -91,7 +91,8 @@ async def test_responder_argv():
     with patch("kalimcp.tools.capture._popen", side_effect=_fake_popen(procs)):
         res = await capture.capture_start(tool="responder", interface="eth1", wait_seconds=0)
     assert res["ok"] is True
-    assert procs[0].argv == ["responder", "-I", "eth1", "-wd"]
+    # DHCP poisoning (-d) is opt-in; default is WPAD only (-w).
+    assert procs[0].argv == ["responder", "-I", "eth1", "-w"]
 
 
 @pytest.mark.asyncio
@@ -139,7 +140,7 @@ async def test_extra_args_appended():
         await capture.capture_start(
             tool="responder", interface="eth0", extra="-A -v", wait_seconds=0,
         )
-    assert procs[0].argv == ["responder", "-I", "eth0", "-wd", "-A", "-v"]
+    assert procs[0].argv == ["responder", "-I", "eth0", "-w", "-A", "-v"]
 
 
 @pytest.mark.asyncio
