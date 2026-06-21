@@ -34,7 +34,11 @@ def _fake_result(stdout: str = "ok") -> dict:
 async def test_scoutsuite_aws_argv():
     with patch("kalimcp.tools.cloud.run.run", new=AsyncMock(return_value=_fake_result())) as m:
         result = await cloud.scoutsuite(provider="aws")
-    assert result["parsed"] == {"provider": "aws", "report_dir": ""}
+    # parsed is honest: it points at the report dir, it does not pretend the
+    # findings were parsed inline.
+    assert result["parsed"]["provider"] == "aws"
+    assert result["parsed"]["results_parsed_inline"] is False
+    assert result["parsed"]["report_dir"] == "scoutsuite-report"
     argv = m.call_args.args[0]
     assert argv == ["scout", "aws", "--no-browser"]
 
@@ -70,9 +74,15 @@ async def test_scoutsuite_invalid_provider():
 async def test_prowler_aws_argv():
     with patch("kalimcp.tools.cloud.run.run", new=AsyncMock(return_value=_fake_result())) as m:
         result = await cloud.prowler(provider="aws")
-    assert result["parsed"] == {"provider": "aws"}
+    assert result["parsed"]["provider"] == "aws"
+    assert result["parsed"]["results_parsed_inline"] is False
+    assert result["parsed"]["output_dir"] == "/tmp/kalimcp_prowler"
     argv = m.call_args.args[0]
-    assert argv == ["prowler", "aws", "--output-formats", "json-ocsf"]
+    # Always passes an output dir so the report is findable.
+    assert argv == [
+        "prowler", "aws", "--output-formats", "json-ocsf",
+        "--output-directory", "/tmp/kalimcp_prowler",
+    ]
 
 
 @pytest.mark.asyncio

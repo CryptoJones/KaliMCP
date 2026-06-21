@@ -77,7 +77,15 @@ async def scoutsuite(
         argv += ["--report-dir", report_dir]
     argv += shlex.split(extra_args)
     result = await _audited_run("scoutsuite", argv, timeout_seconds)
-    result["parsed"] = {"provider": provider, "report_dir": report_dir}
+    # ScoutSuite writes an HTML + scoutsuite_results_*.js report to a
+    # directory; it is NOT parsed inline. Report where it landed and say so,
+    # rather than echoing the inputs as if they were findings.
+    result["parsed"] = {
+        "provider": provider,
+        "report_dir": report_dir or "scoutsuite-report",
+        "results_parsed_inline": False,
+        "note": "findings are in the ScoutSuite report dir (scoutsuite_results_*.js); read them there.",
+    }
     return result
 
 
@@ -105,12 +113,20 @@ async def prowler(
             f"invalid provider: {provider!r}. Known: {sorted(_PROVIDERS)}",
             parsed={"provider": provider},
         )
-    argv = ["prowler", provider, "--output-formats", "json-ocsf"]
-    if output_dir:
-        argv += ["--output-directory", output_dir]
+    # Always pass an output directory so the caller can find the report
+    # (Prowler otherwise scatters it under a default ./output relative to
+    # CWD). The OCSF JSON is not parsed inline.
+    eff_dir = output_dir or "/tmp/kalimcp_prowler"
+    argv = ["prowler", provider, "--output-formats", "json-ocsf",
+            "--output-directory", eff_dir]
     argv += shlex.split(extra_args)
     result = await _audited_run("prowler", argv, timeout_seconds)
-    result["parsed"] = {"provider": provider}
+    result["parsed"] = {
+        "provider": provider,
+        "output_dir": eff_dir,
+        "results_parsed_inline": False,
+        "note": "findings are the OCSF JSON files in output_dir; read them there.",
+    }
     return result
 
 

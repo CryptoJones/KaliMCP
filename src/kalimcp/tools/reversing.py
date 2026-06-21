@@ -66,13 +66,22 @@ async def r2_analyze(
 ) -> dict[str, Any]:
     """Analyze a binary with radare2 in quiet, scriptable mode.
 
-    Runs ``r2 -q -e scr.color=0 -c <commands> -- <path>``. ``-q`` quits
+    Runs ``r2 -q -e scr.color=0 -c <commands> <path>``. ``-q`` quits
     after the command runs (no interactive shell), ``-e scr.color=0``
     strips ANSI color so stdout stays parseable. ``commands`` is one
     semicolon-separated string of r2 commands — the default ``aaa;afl``
     runs full analysis then lists functions. Raw r2 stdout is the value.
+
+    Note: radare2 has **no** ``--`` end-of-options separator — there it
+    means "open no file" (``malloc://512``), which would silently analyze
+    an empty buffer. The file is r2's final positional argument; an
+    existing path that begins with ``-`` is the only edge ``validate_file``
+    can't see, so it's normalized to ``./<path>`` when relative.
     """
     if err := run.validate_file(path, "path"):
         return err
-    argv = ["r2", "-q", "-e", "scr.color=0", "-c", commands, "--", path]
+    # r2 reads the final positional as the file; guard a leading-dash
+    # relative path (which r2 would read as a flag) by prefixing "./".
+    safe_path = path if path.startswith(("/", "./", "../")) else f"./{path}"
+    argv = ["r2", "-q", "-e", "scr.color=0", "-c", commands, safe_path]
     return await _audited_run("r2", argv, timeout_seconds)

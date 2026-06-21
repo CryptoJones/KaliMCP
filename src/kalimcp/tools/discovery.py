@@ -158,9 +158,11 @@ async def resolve(
 ) -> dict[str, Any]:
     """Resolve a target with dnsx (ProjectDiscovery), DNS records as JSON.
 
-    Performs an A-record resolve with the full response attached
-    (``-a -resp``). Returns the ``run.run`` result with ``parsed``:
-    ``{records: [...], count: N}``.
+    The host is fed to dnsx on **stdin** (its resolve input), not via
+    ``-d`` — in dnsx ``-d`` is the *bruteforce* base and needs a wordlist,
+    so ``-d <host>`` alone resolves nothing. ``record_types`` selects which
+    record flags (``-a``/``-aaaa``/``-cname``/…) to query. Returns the
+    ``run.run`` result with ``parsed``: ``{records: [...], count: N}``.
     """
     if err := run.validate_arg(target, "target"):
         err["parsed"] = _empty_dnsx()
@@ -172,8 +174,8 @@ async def resolve(
         for rt in record_types.replace(",", " ").split()
         if rt.strip().isalpha()
     ] or ["a"]
-    argv = ["dnsx", "-silent", "-json", "-resp", "-d", target]
+    argv = ["dnsx", "-silent", "-json"]
     for rt in rtypes:
         argv.append("-" + rt)
-    result = await run.run(argv, timeout=timeout_seconds)
+    result = await run.run(argv, timeout=timeout_seconds, stdin=(target + "\n").encode())
     return run.distill(result, _parse_dnsx, _empty_dnsx)

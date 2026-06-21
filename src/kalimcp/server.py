@@ -1152,13 +1152,15 @@ async def certipy_request(
     ca: str = "",
     template: str = "",
     upn: str = "",
+    ca_host: str = "",
     dc_ip: str = "",
     timeout_seconds: int = 300,
 ) -> dict:
     """Request a certificate from a CA — ESC1-style abuse (certipy req).
 
-    Pass an alternate `upn` to impersonate via the issued cert. Returns the
-    saved `.pfx` path."""
+    Pass an alternate `upn` to impersonate via the issued cert. Set `ca_host`
+    (the CA enrollment server) when the CA isn't reachable from `ca` alone.
+    Returns the saved `.pfx` path."""
     return await certipy.request(
         target=target,
         username=username,
@@ -1167,6 +1169,7 @@ async def certipy_request(
         ca=ca,
         template=template,
         upn=upn,
+        ca_host=ca_host,
         dc_ip=dc_ip,
         timeout_seconds=timeout_seconds,
     )

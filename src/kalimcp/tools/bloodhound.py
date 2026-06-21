@@ -65,9 +65,11 @@ async def collect(
       username: domain user to authenticate as.
       password: password literal. Mutually exclusive with ``nthash``.
       nthash: NT hash for pass-the-hash auth (sent as ``--hashes :<nt>``).
-      dc_ip: domain-controller IP (``-dc``). Useful when DNS can't
-        resolve the DC.
-      nameserver: DNS server to use (``-ns``), typically the DC.
+      dc_ip: domain controller passed as ``-dc``. Note bloodhound-python's
+        ``-dc`` wants the DC *hostname* (Kerberos binds to it by name); when
+        you only have an address, give it as ``nameserver`` (``-ns``) and let
+        DNS resolve the DC.
+      nameserver: DNS server to use (``-ns``), typically the DC's IP.
       collection: BloodHound collection method (``-c``). Default
         ``Default``; common alternatives ``All``, ``DCOnly``, ``Group``.
       output_dir: directory the run should produce the zip in. When set

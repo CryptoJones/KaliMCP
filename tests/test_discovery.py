@@ -142,9 +142,12 @@ async def test_dnsx_argv_shape():
     with patch("kalimcp.tools.discovery.run.run", new=AsyncMock(return_value=_fake_result())) as m:
         await discovery.resolve(target="example.com")
     argv = m.call_args.args[0]
-    assert argv[:4] == ["dnsx", "-silent", "-json", "-resp"]
-    assert "-d" in argv and argv[argv.index("-d") + 1] == "example.com"
+    assert argv[:3] == ["dnsx", "-silent", "-json"]
+    # The host is fed on stdin (dnsx resolve input), NOT via -d (which is the
+    # bruteforce base flag and resolves nothing on its own).
+    assert "-d" not in argv
     assert "-a" in argv
+    assert m.call_args.kwargs.get("stdin") == b"example.com\n"
 
 
 @pytest.mark.asyncio

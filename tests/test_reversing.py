@@ -83,8 +83,10 @@ async def test_gdb_missing_file_errors_without_running():
 async def test_r2_default_argv():
     with patch("kalimcp.tools.reversing.run.run", new=AsyncMock(return_value=_fake_result())) as m:
         await reversing.r2_analyze(path="/loot/bin")
+    # radare2 has no `--` separator (it means "open no file"); the path is
+    # the final positional.
     assert m.call_args.args[0] == [
-        "r2", "-q", "-e", "scr.color=0", "-c", "aaa;afl", "--", "/loot/bin",
+        "r2", "-q", "-e", "scr.color=0", "-c", "aaa;afl", "/loot/bin",
     ]
 
 
@@ -94,7 +96,16 @@ async def test_r2_custom_commands_is_one_argv_item():
         await reversing.r2_analyze(path="/loot/bin", commands="aa;pdf @ main")
     argv = m.call_args.args[0]
     # The whole command string is a single -c argument.
-    assert argv == ["r2", "-q", "-e", "scr.color=0", "-c", "aa;pdf @ main", "--", "/loot/bin"]
+    assert argv == ["r2", "-q", "-e", "scr.color=0", "-c", "aa;pdf @ main", "/loot/bin"]
+
+
+@pytest.mark.asyncio
+async def test_r2_relative_path_gets_dot_slash_guard():
+    """A relative path is normalized to ./<path> so r2 can't read a
+    leading-dash filename as a flag (r2 has no `--` separator)."""
+    with patch("kalimcp.tools.reversing.run.run", new=AsyncMock(return_value=_fake_result())) as m:
+        await reversing.r2_analyze(path="weird-name")
+    assert m.call_args.args[0][-1] == "./weird-name"
 
 
 @pytest.mark.asyncio
