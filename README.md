@@ -356,6 +356,7 @@ deliberately left out:
 | v0.8 | Windows AD post-exploit: impacket suite (NPUsers/UserSPNs/secretsdump/smbclient), winrm_exec, msfvenom payload generation | shipped |
 | v0.9 | engagement workspace (`~/.kalimcp/engagements/<name>/`) — findings/creds/loot/screenshots + scope-warning audit + auto-record hook | shipped |
 | (gap-coverage) | recon baseline (nuclei, subfinder/httpx/dnsx, wpscan, gowitness); AD analysis (BloodHound collect, Certipy, Responder/mitm6/ntlmrelayx capture); traversal (SOCKS pivot, scp put/get, linpeas runner); exploitation (Metasploit module delivery); cloud audit (ScoutSuite/Prowler/kube-hunter); RE (gdb/radare2); correlation + client/HTML reports | shipped |
+| **v1.0** | **first stable release** — reverse-tunnel pivots (Chisel + Ligolo-ng); at-rest hardening (owner-only creds/findings/loot, engagement dirs `0700`) + audit-redaction fidelity; everything since v0.9 consolidated to a 1.0 baseline | shipped |
 
 See [CHANGELOG.md](CHANGELOG.md) for the per-release detail.
 

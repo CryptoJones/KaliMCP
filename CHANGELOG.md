@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-06-28
+
+First stable release. Rolls everything since 0.9.0 into a 1.0 baseline: the
+verified at-rest/audit hardening (#52, #53), the reverse-tunnel pivots
+(Chisel + Ligolo-ng), the pentest gap-coverage phase (25 tools), and the
+tool-scoped auto-record / Responder-default / image-variant work. The
+no-authorization-gate design holds throughout — the audit log and the
+non-blocking `out_of_scope` warning remain the only accountability. SemVer
+from here is patch-per-merge unless a change adds a feature (minor) or breaks
+compatibility (major).
+
 ### Fixed — at-rest hardening & audit redaction (verified review #52, #53)
 
 The two findings from `FINDINGS.md` that survived line-by-line verification
