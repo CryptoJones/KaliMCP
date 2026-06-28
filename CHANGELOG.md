@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — at-rest hardening & audit redaction (verified review #52, #53)
+
+The two findings from `FINDINGS.md` that survived line-by-line verification
+(every other item in that external review was false, fabricated, or already
+fixed). Both are Low–Med, neither was a genuine CRITICAL.
+
+- **Audit log no longer fabricates a "secret" from a blank flag value (#52).**
+  `redact_argv`'s flag paths (`--flag=` and `-flag ''`) hashed an *empty*
+  value into `sha256:e3b0c44298…` — the well-known empty-string digest —
+  manufacturing a fake credential in the forensic log and erasing the signal
+  that a blank value was actually passed. The flag paths now skip the empty
+  value while still redacting short-but-real secrets (the 1-2 char safety net
+  the by-value path can't provide is preserved).
+- **Credential material is owner-only at rest, with no create-then-chmod
+  window (#53).** Sensitive writers (`creds.jsonl`, loot blobs + manifest)
+  previously created the file world-readable, then chmod'd to 0600 — a TOCTOU
+  gap under a loose umask. `findings.jsonl` (which receives secretsdump
+  `nthash`/`lmhash` via auto-record) was *never* tightened at all, and the
+  engagement dir wasn't `0700`. All sensitive files are now created `0600` at
+  `os.open` time via owner-only append/write helpers (mirroring `audit.py`),
+  legacy looser files are tightened best-effort, and engagement dirs are
+  `0700`. Plaintext-at-rest stays intentional (documented operator loot cache).
+
 ### Added — reverse-tunnel pivots (Chisel + Ligolo-ng)
 
 A second-source (Perplexity) cross-check of the common pentest toolset

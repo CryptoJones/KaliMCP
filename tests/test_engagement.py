@@ -274,6 +274,59 @@ def test_creds_file_is_mode_0600(workspace):
     assert mode == 0o600
 
 
+# ---------- at-rest hardening (#53) ----------
+
+
+def test_findings_file_is_mode_0600(workspace):
+    """findings.jsonl receives secretsdump nthash/lmhash via auto-record,
+    so it must be owner-only at rest too — previously it was never chmod'd."""
+    workspace.create("op")
+    workspace.use("op")
+    workspace.record_finding("creds", "10.0.0.5", {"nthash": "deadbeef" * 4})
+    p = workspace.engagement_dir("op") / "findings.jsonl"
+    assert p.stat().st_mode & 0o777 == 0o600
+
+
+def test_engagement_dir_is_mode_0700(workspace):
+    """The engagement dir holds creds/loot/findings; others must not be able
+    to traverse into it."""
+    workspace.create("op")
+    p = workspace.engagement_dir("op")
+    assert p.stat().st_mode & 0o777 == 0o700
+    assert (p / "loot").stat().st_mode & 0o777 == 0o700
+
+
+def test_sensitive_files_owner_only_under_permissive_umask(workspace):
+    """Under a permissive umask the mode must still be 0600 — proof the code
+    sets it (atomic create + tighten), rather than relying on ambient umask.
+    With the old create-then-chmod path findings.jsonl was never tightened."""
+    import os
+    old = os.umask(0)
+    try:
+        workspace.create("op")
+        workspace.use("op")
+        workspace.record_cred("10.0.0.5", "ssh", "alice", "hunter2")
+        workspace.record_finding("creds", "10.0.0.5", {"nthash": "ab" * 16})
+        workspace.write_loot("ntds.txt", "alice:hash\n")
+        d = workspace.engagement_dir("op")
+        for rel in ("creds.jsonl", "findings.jsonl", "loot/ntds.txt"):
+            assert (d / rel).stat().st_mode & 0o777 == 0o600, rel
+    finally:
+        os.umask(old)
+
+
+def test_legacy_loose_findings_file_tightened(workspace):
+    """A findings.jsonl that predates the discipline (created world-readable)
+    is tightened to 0600 on the next append."""
+    workspace.create("op")
+    workspace.use("op")
+    p = workspace.engagement_dir("op") / "findings.jsonl"
+    p.write_text('{"old": true}\n', encoding="utf-8")
+    p.chmod(0o644)
+    workspace.record_finding("host", "10.0.0.5", {})
+    assert p.stat().st_mode & 0o777 == 0o600
+
+
 # ---------- loot ----------
 
 def test_loot_write_and_read_text_roundtrip(workspace):

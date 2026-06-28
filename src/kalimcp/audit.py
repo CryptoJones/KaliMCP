@@ -180,6 +180,23 @@ def _hash8(value: str) -> str:
     return f"sha256:{digest}"
 
 
+def _redact_flag_value(value: str) -> str:
+    """Redaction token for a secret flag's value, or the value unchanged
+    when it is empty.
+
+    The flag paths (``-flag value`` and ``--flag=value``) know the token
+    *is* the secret, so — unlike the by-value path, which guards against
+    substring over-matching with ``_MIN_REDACTABLE_VALUE`` — even a 1-2
+    char secret following a flag is worth hashing here (the comment on
+    that constant promises exactly this safety net). The lone value not
+    worth hashing is the empty string: ``--password=`` (or ``-p ''``)
+    carries no secret, and ``_hash8("")`` would only stamp the well-known
+    empty-string digest into the log — fabricating a "secret" that never
+    existed and erasing the signal that a *blank* value was passed (#52).
+    """
+    return _hash8(value) if value else value
+
+
 def redact_text(text: str, secret_values: Iterable[str] | None) -> str:
     """Replace every secret-value substring in ``text`` with ``sha256:<8hex>``.
 
@@ -259,13 +276,13 @@ def redact_argv(
     for tok in argv:
         if skip_next:
             # Whole token is the secret-flag's value.
-            out.append(_hash8(tok))
+            out.append(_redact_flag_value(tok))
             skip_next = False
             continue
         # `--flag=value` fused form: redact the value half only.
         name, sep, val = tok.partition("=")
         if sep and name in flags:
-            out.append(f"{name}={_hash8(val)}")
+            out.append(f"{name}={_redact_flag_value(val)}")
             continue
         out.append(by_value(tok))
         if tok in flags:

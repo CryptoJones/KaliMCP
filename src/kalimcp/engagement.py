@@ -49,6 +49,60 @@ _WORDLIST_DIRS = [
 ]
 
 
+# ---------- owner-only at-rest discipline ----------
+#
+# Engagement state holds credential material: creds.jsonl directly, loot
+# blobs, and findings.jsonl (which receives secretsdump nthash/lmhash
+# payloads via auto-record in tools/_active.py). None of it may exist
+# world-readable, even for the window between a create() and a later
+# chmod(). These helpers create files 0600 and dirs 0700 *at open() time*
+# — the mode argument to os.open/os.mkdir applies on creation — mirroring
+# the pattern audit.py already uses for the log. A best-effort tighten
+# covers files/dirs that predate this discipline or were made under a
+# looser umask (#53).
+
+_OWNER_ONLY = 0o600
+_OWNER_ONLY_DIR = 0o700
+
+
+def _open_owner_only_append(path: Path):
+    """Open ``path`` for append, creating it 0600 if absent.
+
+    ``os.open`` applies the mode only on creation, so a pre-existing file
+    keeps its own mode (``_tighten_file`` fixes legacy looser files).
+    Returns a text file object; the caller closes it.
+    """
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, _OWNER_ONLY)
+    return os.fdopen(fd, "a", encoding="utf-8")
+
+
+def _write_bytes_owner_only(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` owner-only (0600), truncating any prior
+    content. Created 0600 at ``os.open`` time — no world-readable
+    create-then-chmod window."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _OWNER_ONLY)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
+
+
+def _tighten_file(path: Path) -> None:
+    """Best-effort chmod to 0600 for a sensitive file that predates the
+    owner-only discipline (``os.open`` only sets the mode on creation)."""
+    try:
+        path.chmod(_OWNER_ONLY)
+    except OSError:
+        pass
+
+
+def _harden_dir(path: Path) -> None:
+    """Best-effort chmod to 0700 — an engagement dir holds creds/loot/
+    findings and must not be group/other-traversable, even a legacy one."""
+    try:
+        path.chmod(_OWNER_ONLY_DIR)
+    except OSError:
+        pass
+
+
 # ---------- engagement resolution ----------
 
 def _root() -> Path:
@@ -75,9 +129,10 @@ def engagement_dir(name: str | None = None) -> Path:
     n = name or current_engagement()
     p = _root() / _sanitize_name(n)
     try:
-        p.mkdir(parents=True, exist_ok=True)
-        (p / "loot").mkdir(exist_ok=True)
-        (p / "screenshots").mkdir(exist_ok=True)
+        p.mkdir(parents=True, exist_ok=True, mode=_OWNER_ONLY_DIR)
+        _harden_dir(p)
+        (p / "loot").mkdir(exist_ok=True, mode=_OWNER_ONLY_DIR)
+        (p / "screenshots").mkdir(exist_ok=True, mode=_OWNER_ONLY_DIR)
     except OSError:
         pass
     return p
@@ -108,9 +163,10 @@ def create(name: str, scope: list[str] | None = None, operator: str = "") -> dic
     if p.exists() and (p / "engagement.json").exists():
         return {"ok": False, "error": "exists", "name": safe, "path": str(p)}
     try:
-        p.mkdir(parents=True, exist_ok=True)
-        (p / "loot").mkdir(exist_ok=True)
-        (p / "screenshots").mkdir(exist_ok=True)
+        p.mkdir(parents=True, exist_ok=True, mode=_OWNER_ONLY_DIR)
+        _harden_dir(p)
+        (p / "loot").mkdir(exist_ok=True, mode=_OWNER_ONLY_DIR)
+        (p / "screenshots").mkdir(exist_ok=True, mode=_OWNER_ONLY_DIR)
         meta = {
             "name": safe,
             "scope": list(scope or []),
@@ -470,6 +526,7 @@ def record_cred(
     ``secret`` is stored verbatim — the engagement directory is the
     operator's loot cache, not the audit log. The directory should
     live on encrypted storage if the operator needs at-rest secrecy.
+    ``_append_jsonl`` creates the file owner-only at open() time (#53).
     """
     p = engagement_dir(name) / "creds.jsonl"
     entry = {
@@ -480,13 +537,7 @@ def record_cred(
         "secret": secret,
         "source_tool": source_tool,
     }
-    ok = _append_jsonl(p, entry)
-    if ok:
-        try:
-            p.chmod(0o600)
-        except OSError:
-            pass
-    return ok
+    return _append_jsonl(p, entry)
 
 
 def query_creds(
@@ -540,8 +591,10 @@ def _read_loot_manifest(name: str | None = None) -> dict[str, Any]:
 def _write_loot_manifest(manifest: dict[str, Any], name: str | None = None) -> None:
     p = _loot_manifest_path(name)
     try:
-        p.write_text(json.dumps(manifest, sort_keys=True, indent=2), encoding="utf-8")
-        p.chmod(0o600)
+        _write_bytes_owner_only(
+            p, json.dumps(manifest, sort_keys=True, indent=2).encode("utf-8")
+        )
+        _tighten_file(p)
     except OSError:
         pass
 
@@ -556,8 +609,8 @@ def write_loot(blob_name: str, data: bytes | str, *, name: str | None = None) ->
     p = engagement_dir(name) / "loot" / safe
     raw = data.encode("utf-8") if isinstance(data, str) else data
     try:
-        p.write_bytes(raw)
-        p.chmod(0o600)
+        _write_bytes_owner_only(p, raw)
+        _tighten_file(p)
         size = p.stat().st_size
     except OSError as exc:
         return {"ok": False, "error": "write_failed", "message": str(exc)}
@@ -778,10 +831,19 @@ def _extract_host(target: str) -> str:
 # ---------- JSONL helpers ----------
 
 def _append_jsonl(path: Path, entry: dict[str, Any]) -> bool:
+    """Append one JSON line to ``path``, creating it owner-only (0600).
+
+    Credential material reaches these files — creds.jsonl directly, and
+    findings.jsonl via secretsdump auto-record (nthash/lmhash payloads) —
+    so the file is created 0600 at open() time (no world-readable
+    create-then-chmod window) and any pre-existing looser file is tightened
+    best-effort (#53).
+    """
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as fh:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=_OWNER_ONLY_DIR)
+        with _open_owner_only_append(path) as fh:
             fh.write(json.dumps(entry, default=str) + "\n")
+        _tighten_file(path)
         return True
     except (OSError, TypeError, ValueError):
         return False

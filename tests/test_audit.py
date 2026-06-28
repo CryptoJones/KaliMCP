@@ -147,6 +147,33 @@ def test_redact_noop_without_flags_or_values():
     assert audit.redact_argv(argv, None, []) == argv
 
 
+def test_redact_fused_empty_value_not_hashed():
+    """`--password=` (empty value) must NOT become the empty-string digest:
+    that fabricates a 'secret' in the forensic log and erases the signal
+    that a blank value was passed (#52)."""
+    out = audit.redact_argv(["tool", "--password="], {"--password"})
+    assert out == ["tool", "--password="]
+    assert "sha256:" not in " ".join(out)
+
+
+def test_redact_space_separated_empty_value_not_hashed():
+    """A blank value after a secret flag (`-p ''`) is left intact, not
+    turned into the empty-string digest (#52)."""
+    out = audit.redact_argv(["tool", "-p", "", "host"], {"-p"})
+    assert out == ["tool", "-p", "", "host"]
+
+
+def test_redact_short_flag_value_still_hashed():
+    """A short-but-real secret behind a flag is still redacted — the flag
+    path is the documented safety net for 1-2 char secrets the by-value
+    path can't touch. Only the *empty* value is exempt (#52)."""
+    spaced = audit.redact_argv(["tool", "-p", "ab", "host"], {"-p"})
+    assert spaced[2] != "ab"
+    assert spaced[2].startswith("sha256:")
+    fused = audit.redact_argv(["tool", "--pw=ab"], {"--pw"})
+    assert fused[1].startswith("--pw=sha256:")
+
+
 # ---------- redact_text (#15: the exception/error string sink) ----------
 
 
