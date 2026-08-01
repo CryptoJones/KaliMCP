@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import sys
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from . import audit, engagement, enrich, oast, process_registry, report, sessions
 from .tools import (
@@ -76,7 +76,7 @@ from .tools import (
     zap,
 )
 
-mcp = FastMCP("kalimcp")
+mcp = MCPServer("kalimcp")
 
 
 # ---------- active-scan tools ----------

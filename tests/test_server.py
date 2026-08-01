@@ -167,9 +167,9 @@ async def test_active_tools_no_longer_take_authorization_token():
     for tool in tools:
         if tool.name not in active:
             continue
-        # tool.inputSchema is a JSON Schema dict; property names live
+        # tool.input_schema is a JSON Schema dict; property names live
         # under the "properties" key.
-        props = (tool.inputSchema or {}).get("properties", {})
+        props = (tool.input_schema or {}).get("properties", {})
         assert "authorization_token" not in props, (
             f"{tool.name} still has an authorization_token parameter — "
             f"v0.2 dropped that. Regression."
@@ -181,7 +181,7 @@ async def test_hydra_crack_required_inputs():
     """hydra_crack should require `target` and `service`; the rest default."""
     tools = await server.mcp.list_tools()
     tool = next(t for t in tools if t.name == "hydra_crack")
-    schema = tool.inputSchema or {}
+    schema = tool.input_schema or {}
     required = set(schema.get("required", []))
     assert "target" in required
     assert "service" in required
@@ -195,7 +195,7 @@ async def test_sqlmap_scan_required_inputs():
     """sqlmap_scan should require `target`; `profile` and `timeout_seconds` default."""
     tools = await server.mcp.list_tools()
     tool = next(t for t in tools if t.name == "sqlmap_scan")
-    schema = tool.inputSchema or {}
+    schema = tool.input_schema or {}
     required = set(schema.get("required", []))
     assert "target" in required
     props = schema.get("properties", {})
@@ -208,7 +208,7 @@ async def test_nmap_scan_required_inputs():
     """nmap_scan should require `target`; `profile` and `timeout_seconds` have defaults."""
     tools = await server.mcp.list_tools()
     nmap_tool = next(t for t in tools if t.name == "nmap_scan")
-    schema = nmap_tool.inputSchema or {}
+    schema = nmap_tool.input_schema or {}
     required = set(schema.get("required", []))
     assert "target" in required
     # The non-required fields should still appear in properties.
@@ -229,5 +229,5 @@ async def test_passive_tools_have_no_target_param():
         "cert_dump": "host",
     }
     for name, expected_param in expected_keys.items():
-        props = (by_name[name].inputSchema or {}).get("properties", {})
+        props = (by_name[name].input_schema or {}).get("properties", {})
         assert expected_param in props, f"{name} missing expected param {expected_param!r}"

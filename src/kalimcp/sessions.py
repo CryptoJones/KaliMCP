@@ -438,7 +438,11 @@ def session_status(session_id: str) -> dict[str, Any]:
 def session_list() -> dict[str, Any]:
     items = []
     for sid, sess in sorted(_sessions.items()):
-        entry = {k: sess[k] for k in ("id", "kind", "started_at") if k in sess}
+        # Annotate as dict[str, Any]: without it, the comprehension's literal key
+        # tuple narrows the value type to dict[Literal["id","kind","started_at"], Any],
+        # and the later "endpoint"/"proxy"/"port"/"alive" assignments become
+        # index-type errors under mypy 2.3+.
+        entry: dict[str, Any] = {k: sess[k] for k in ("id", "kind", "started_at") if k in sess}
         if sess.get("kind") in ("ssh", "socks"):
             entry["endpoint"] = f"{sess['user']}@{sess['host']}:{sess['port']}"
             if sess.get("kind") == "socks":
