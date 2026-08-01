@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Adopt MCP revision `2026-07-28` (the stateless revision) via the `mcp` 2.x
+  SDK** (`mcp>=1.0.0` → `mcp>=2.0.0,<3.0`). `FastMCP` → `MCPServer`; the tool
+  registrations and every tool's behaviour are unchanged, and a v2 server still
+  serves 2025-era clients from the same process. KaliMCP uses the SDK's own
+  `mcp.run()` stdio transport, so no transport code changed. Verified against
+  `mcp-conformance` 0.2.0 (17 contracts passing, 1 skipped — KaliMCP tags
+  untrusted tool output rather than flagging injection in its own inputs, so
+  `expect.injection` is intentionally unset).
+
 ## [1.0.0] — 2026-06-28
 
 First stable release. Rolls everything since 0.9.0 into a 1.0 baseline: the
